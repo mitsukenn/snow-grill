@@ -349,28 +349,26 @@ function nextPad() {
 // ============================================================
 function territoryTarget() {
   const T = CONFIG.territory, W = CONFIG.world;
-  if (G.v && G.v.battle) return { x0: 20, y0: 60, x1: W.w - 20, y1: W.h - 20 };   // 決戦は最初から全部
+  if (G.v && G.v.battle) return { x0: 20, x1: W.w - 20, y1: W.h - 20 };   // 決戦は最初から全部
   const r = { ...T.base };
   const add = (x, y, m) => {
     r.x0 = Math.min(r.x0, x - m); r.x1 = Math.max(r.x1, x + m);
-    r.y0 = Math.min(r.y0, y - m); r.y1 = Math.max(r.y1, y + m);
+    r.y1 = Math.max(r.y1, y + m);
   };
   for (let i = 0; i < G.unlockIdx; i++) {
     const u = unlockAt(i);
-    add(u.x, u.y, T.margin);
+    if (u.y > fenceY()) add(u.x, u.y, T.margin);   // 柵の向こうの解放は、キャンプを広げない
     if (u.id === 'counter2') add(CONFIG.counters[1].x + 30, CONFIG.counters[1].y, T.margin);
-    if (u.id === 'huntArea') { add(CONFIG.hunt.x, CONFIG.hunt.y, 0); add(CONFIG.hunt.x + CONFIG.hunt.w, CONFIG.hunt.y, 0); }
   }
-  if (G.pad) add(G.pad.x, G.pad.y, 55);
-  return { x0: Math.max(20, r.x0), y0: Math.max(60, r.y0), x1: Math.min(W.w - 20, r.x1), y1: Math.min(W.h - 20, r.y1) };
+  if (G.pad && G.pad.y > fenceY()) add(G.pad.x, G.pad.y, 55);
+  return { x0: Math.max(20, r.x0), x1: Math.min(W.w - 20, r.x1), y1: Math.min(W.h - 20, r.y1) };
 }
 
 function updateTerritory(instant) {
   const t = territoryTarget();
-  const big = G.huntBig || (G.v && G.v.battle);
-  G.hunt = big ? { ...CONFIG.hunt } : { ...CONFIG.territory.hunt0 };
+  G.hunt = { ...CONFIG.hunt };   // 白クマの雪原は最初から全部
   if (instant || !G.bounds) { G.bounds = { ...t }; G.boundsTo = t; return; }
-  const grew = (G.bounds.x0 - t.x0) + (t.x1 - G.bounds.x1) + (G.bounds.y0 - t.y0) + (t.y1 - G.bounds.y1);
+  const grew = (G.bounds.x0 - t.x0) + (t.x1 - G.bounds.x1) + (t.y1 - G.bounds.y1);
   G.boundsTo = t;
   if (grew > 20) {
     G.boundsFrom = { ...G.bounds };
@@ -390,35 +388,72 @@ function animateTerritory(dt) {
   G.boundsT += dt / 0.8;
   const k = Math.min(1, G.boundsT);
   const e = k < 0.4 ? 0 : 1 - Math.pow(1 - (k - 0.4) / 0.6, 3);
-  ['x0', 'y0', 'x1', 'y1'].forEach(p => { G.bounds[p] = G.boundsFrom[p] + (G.boundsTo[p] - G.boundsFrom[p]) * e; });
+  ['x0', 'x1', 'y1'].forEach(p => { G.bounds[p] = G.boundsFrom[p] + (G.boundsTo[p] - G.boundsFrom[p]) * e; });
   if (k >= 1) G.boundsT = null;
 }
 
-// 領地の外は、雪に埋もれた未開拓の土地（少し暗く）
+// キャンプの上のはし（柵のすぐ手前）。ここより手前がキャンプ
+const campTop = () => fenceY() + 10;
+
+// 歩ける場所に収める：柵の向こうは自由、キャンプ側は左右と手前のはしまで
+function keepInLand(ox, oy, nx, ny) {
+  const b = G.bounds;
+  if (ny <= campTop()) return [nx, ny];
+  if (nx >= b.x0 && nx <= b.x1) return [nx, ny];
+  // キャンプの外へ出ようとしたら：上から入ろうとしたなら柵の高さで止め、中にいたなら横で止める
+  if (oy <= campTop()) return [nx, campTop()];
+  return [clamp(nx, b.x0, b.x1), ny];
+}
+
+// 決まった場所ごとに同じ値を返すゆらぎ（毎フレーム同じ形にするため）
+function hash(n) { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); }
+
+// キャンプのふちに沿った点（左のふち → 手前のふち → 右のふち）
+function edgePoints(step) {
+  const b = G.bounds, top = campTop() + 10, pts = [];
+  for (let y = top; y < b.y1; y += step) pts.push({ x: b.x0 - 22, y, side: 'l' });
+  for (let x = b.x0 - 22; x <= b.x1 + 22; x += step) pts.push({ x, y: b.y1 + 22, side: 'b' });
+  for (let y = top; y < b.y1; y += step) pts.push({ x: b.x1 + 22, y, side: 'r' });
+  return pts;
+}
+
+// 領地の外：まだ誰も踏んでいない、ふかふかの雪原（少し白く明るい）。ふちは雪の吹きだまり
 function drawTerritory() {
-  const b = G.bounds, W = CONFIG.world.w, H = CONFIG.world.h;
-  const pad = 26;
+  if (G.v && G.v.battle) return;
+  const b = G.bounds, W = CONFIG.world.w, H = CONFIG.world.h, top = campTop();
   ctx.save();
-  ctx.fillStyle = 'rgba(35,55,90,.45)';
-  ctx.beginPath();
-  ctx.rect(-200, -200, W + 400, H + 400);
-  roundRectPath(b.x0 - pad, b.y0 - pad, b.x1 - b.x0 + pad * 2, b.y1 - b.y0 + pad * 2, 40);
-  ctx.fill('evenodd');
-  // さかいめの雪の土手（影 → 白い帯 → ハイライト）
-  const edge = () => { ctx.beginPath(); roundRectPath(b.x0 - pad, b.y0 - pad, b.x1 - b.x0 + pad * 2, b.y1 - b.y0 + pad * 2, 40); };
-  ctx.lineJoin = 'round';
-  ctx.strokeStyle = 'rgba(60,90,130,.28)'; ctx.lineWidth = 18; ctx.translate(0, 5); edge(); ctx.stroke(); ctx.translate(0, -5);
-  ctx.strokeStyle = '#f4f9ff'; ctx.lineWidth = 14; edge(); ctx.stroke();
-  ctx.strokeStyle = 'rgba(200,220,245,.9)'; ctx.lineWidth = 3; ctx.setLineDash([10, 16]); edge(); ctx.stroke();
+  ctx.fillStyle = 'rgba(250,253,255,.55)';
+  ctx.fillRect(-100, top, b.x0 - 10 + 100, H - top + 200);
+  ctx.fillRect(b.x1 + 10, top, W - b.x1 + 100, H - top + 200);
+  ctx.fillRect(b.x0 - 10, b.y1 + 10, b.x1 - b.x0 + 20, H - b.y1 + 200);
+  // 吹きだまり：大きさと位置を少しずつ変えた雪の山を、ふちに沿って重ねる
+  edgePoints(24).forEach((p, i) => {
+    const k = hash(Math.round(p.x) * 7 + Math.round(p.y) * 13);
+    const r = 20 + k * 16;
+    const ox = (p.side === 'l' ? -1 : p.side === 'r' ? 1 : 0) * k * 10;
+    const oy = p.side === 'b' ? k * 10 : 0;
+    ctx.fillStyle = 'rgba(80,110,150,.16)';
+    ctx.beginPath(); ctx.ellipse(p.x + ox, p.y + oy + 7, r * 1.15, r * 0.5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fbfdff';
+    ctx.beginPath(); ctx.ellipse(p.x + ox, p.y + oy, r, r * 0.55, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(210,228,248,.8)';
+    ctx.beginPath(); ctx.ellipse(p.x + ox + r * 0.25, p.y + oy + r * 0.15, r * 0.55, r * 0.22, 0, 0, Math.PI * 2); ctx.fill();
+  });
   ctx.restore();
 }
-function roundRectPath(x, y, w, h, r) {
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
+
+// ふちに生えている木と岩（奥から手前の順に描けるよう、描画リストに入れる）
+function edgeDecor() {
+  if (G.v && G.v.battle) return [];
+  const out = [];
+  edgePoints(46).forEach(p => {
+    const k = hash(Math.round(p.x) * 3 + Math.round(p.y) * 17);
+    if (k < 0.45) return;   // ところどころ
+    const push = p.side === 'l' ? -24 - k * 30 : p.side === 'r' ? 24 + k * 30 : 0;
+    const down = p.side === 'b' ? 20 + k * 30 : 0;
+    out.push({ name: k > 0.86 ? 'rock' : 'pine', x: p.x + push, y: p.y + down, h: k > 0.86 ? 34 + k * 14 : 80 + k * 45 });
+  });
+  return out;
 }
 
 function init() {
@@ -555,8 +590,8 @@ function inputDir() {
   if (G.moveTo && !(G.joy && G.joy.moved)) {
     const bd = G.bounds;   // 領地の外をさわったら、ふちまで行く
     const ox = G.moveTo.x, oy = G.moveTo.y;
-    G.moveTo.x = clamp(ox, bd.x0, bd.x1);
-    G.moveTo.y = clamp(oy, bd.y0, bd.y1);
+    G.moveTo.y = clamp(oy, 60, bd.y1);
+    G.moveTo.x = G.moveTo.y > campTop() ? clamp(ox, bd.x0, bd.x1) : clamp(ox, 20, CONFIG.world.w - 20);
     if (Math.hypot(ox - G.moveTo.x, oy - G.moveTo.y) > 60 && G.time - (G.edgeTipT || -9) > 4) {
       G.edgeTipT = G.time;
       floatText(G.moveTo.x, G.moveTo.y - 60, '設備を解放すると広がるよ', '#fff', 18);
@@ -876,9 +911,9 @@ function updatePlayer(dt) {
   const { dx, dy, mag } = inputDir();
   const sp = stat('speed') * mag;
   P.vx = dx * sp; P.vy = dy * sp;
-  const bd = G.bounds;
-  P.x = clamp(P.x + P.vx * dt, bd.x0, bd.x1);
-  P.y = clamp(P.y + P.vy * dt, bd.y0, bd.y1);
+  const nx = clamp(P.x + P.vx * dt, 20, CONFIG.world.w - 20);
+  const ny = clamp(P.y + P.vy * dt, 60, G.bounds.y1);
+  [P.x, P.y] = keepInLand(P.x, P.y, nx, ny);
   if (Math.abs(P.vx) > 5) P.face = P.vx > 0 ? 1 : -1;
   if (mag > 0.1) {
     P.walk += dt * 10;
@@ -1583,6 +1618,7 @@ function render() {
   // 奥（y が小さい）から順に描く
   const list = [];
   CONFIG.decor.forEach(([name, x, y, h]) => list.push({ y, draw: () => { shadow(x, y, h * 0.3); drawSprite(name, x, y, h); } }));
+  edgeDecor().forEach(d => list.push({ y: d.y, draw: () => { shadow(d.x, d.y, d.h * 0.3); drawSprite(d.name, d.x, d.y, d.h); } }));
   if (G.fire) list.push({ y: G.firePos.y, draw: drawFire });
   G.grills.forEach(g => list.push({ y: g.y, draw: () => drawGrill(g) }));
   G.counters.forEach(c => list.push({ y: c.y, draw: () => drawCounter(c) }));
