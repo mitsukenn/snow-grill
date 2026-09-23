@@ -146,25 +146,23 @@ const CONFIG = {
 
   // ---- 見た目（ChatGPT で作った素材。無ければ絵文字で表示） ----
   sprites: {
+    hero_walk1: '🧔', hero_walk2: '🧔', hero_walk3: '🧔', hero_walk4: '🧔', hero_swing_up: '🧔', hero_swing: '🧔', hero_idle2: '🧔', hero_cheer: '🧔',
     hero_idle: '🧔', hero_walk: '🧔', hero_attack: '🧔', hero_hurt: '🧔',
     mob_axe: '🪓', mob_axe_attack: '🪓', mob_axe_down: '😵', mob_axe_g: '🪓', mob_axe_r: '🪓',
     giant_idle: '👹', giant_walk: '👹', giant_windup: '👹', giant_smash: '👹', giant_throw: '👹', giant_roar: '👹', giant_hurt: '👹', giant_down: '😵', ice_rock: '🧊',
-    station_raw: '🪵', station_raw_full: '🥩', station_cooked: '🍽️', station_cooked_full: '🍖', toolbox: '🧰', signpost: '🪧', lumber: '🪵', bush: '🌿', snowdrift: '⛄',
+    station_raw: '🪵', station_raw_full: '🥩', station_cooked: '🍽️', station_cooked_full: '🍖', toolbox: '🧰', signpost: '🪧', bush: '🌿', snowdrift: '⛄',
     watchtower: '🗼', barricade: '🪵', barricade_broken: '🪵', gate_open: '🚪',
-    bear_step1: '🐻‍❄️',
-    villager_old_m: '🥶', villager_old_m_happy: '😋', villager_old_f: '🥶', villager_old_f_happy: '😋',
-    villager_girl: '🥶', villager_girl_happy: '😋', villager_fisher: '🥶', villager_fisher_happy: '😋', villager_mother: '🥶',
-    swordsman: '⚔️', swordsman_attack: '⚔️', swordsman_down: '😵', archer_aim: '🏹', archer_down: '😵',
+    swordsman: '⚔️', swordsman_attack: '⚔️', swordsman_down: '😵', archer_aim: '🏹',
     axe_wood: '🪓', axe_iron: '🪓', axe_gold: '🪓',
-    bear_walk2: '🐻‍❄️', bear_run: '🐻‍❄️', bear_claw_up: '🐻‍❄️', bear_claw: '🐻‍❄️', bear_bite: '🐻‍❄️',
-    bear_roar: '🐻‍❄️', bear_hurt: '🐻‍❄️', bear_sleep: '🐻‍❄️',
+    bear_walk2: '🐻‍❄️', bear_run: '🐻‍❄️', bear_claw_up: '🐻‍❄️', bear_claw: '🐻‍❄️',
+    bear_roar: '🐻‍❄️', bear_hurt: '🐻‍❄️',
     helper_hunter: '🏹', helper_cook: '🧑‍🍳',
     villager_m: '🥶', villager_f: '🥶', villager_child: '🥶', villager_happy: '😋',
     bear_walk: '🐻‍❄️', bear_stand: '🐻‍❄️', bear_down: '😵', bear_boss: '🐻‍❄️',
-    meat_raw: '🥩', meat_cooked: '🍖', pile_cooked: '🍖', pile_raw: '🥩', coins_pile: '💰',
+    meat_raw: '🥩', meat_cooked: '🍖', coins_pile: '💰',
     grill_off: '🔥', grill_on: '🔥', counter: '🪵', tent: '⛺', campfire: '🔥',
     logs: '🪵', igloo: '🛖', pine: '🌲', rock: '🪨',
-    coin: '🪙', hand: '👆',
+    coin: '🪙',
   },
 
   // 村人の見た目の種類（画像が届いているものだけ使う）。villager_n01〜 は追加で作った村人

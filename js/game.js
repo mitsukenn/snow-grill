@@ -58,9 +58,10 @@ function drawSprite(name, x, y, h, o = {}) {
 // キャラの形をした影（太陽は左上。影は右上へ斜めにのびる）。黒い形は画像ごとに一度だけ作る
 const silhouettes = {};
 function silhouette(name) {
-  if (silhouettes[name]) return silhouettes[name];
+  if (name in silhouettes) return silhouettes[name];
   const im = images[name];
   if (!im) return null;
+  silhouettes[name] = null;   // 作り終わるまでは影なし
   const c = document.createElement('canvas');
   const w = 96, h = Math.round(96 * im.height / im.width);   // 影なので小さくてよい
   c.width = w; c.height = h;
@@ -69,9 +70,13 @@ function silhouette(name) {
   g.globalCompositeOperation = 'source-in';
   g.fillStyle = '#1c2f4a';
   g.fillRect(0, 0, w, h);
-  return (silhouettes[name] = c);
+  // 画面に速く描けるよう、ImageBitmap にしておく（使えない環境ではキャンバスのまま）
+  if (window.createImageBitmap) createImageBitmap(c).then(bm => { silhouettes[name] = bm; }).catch(() => { silhouettes[name] = c; });
+  else silhouettes[name] = c;
+  return silhouettes[name];
 }
 function castShadow(name, x, y, h, flip, alpha = 0.26) {
+  if (G.lowFx) return;
   const s = silhouette(name);
   if (!s) return;
   const w = h * s.width / s.height;
@@ -80,8 +85,8 @@ function castShadow(name, x, y, h, flip, alpha = 0.26) {
   ctx.transform(1, 0, -0.85, 0.32, 0, 0);   // 地面にたおして、右へななめに
   if (flip) ctx.scale(-1, 1);
   // 少しずつずらして重ね、ふちをやわらかく
-  ctx.globalAlpha = alpha / 2.2;
-  [[0, 0], [-3, 0], [3, 0], [0, -4]].forEach(([dx, dy]) => ctx.drawImage(s, -w / 2 + dx, -h + dy, w, h));
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(s, -w / 2, -h, w, h);
   ctx.restore();
 }
 
@@ -357,6 +362,7 @@ function villageClear() {
   floatText(G.player.x, G.player.y - 140, '開拓完了！', '#ffd23f', 42);
   sparks(G.player.x, G.player.y - 60, 60, ['#ffd23f', '#fff', '#7fe0ff', '#ff9ad5']);
   G.shake = 10;
+  G.player.cheerT = 2.5;
   // クリアのごほうび
   if (!G.v.battle) {
     const bonus = Math.round(G.v.goal * CONFIG.clearBonus * G.v.priceMul);
@@ -534,8 +540,15 @@ function init() {
   setInterval(persist, 3000);
   let last = performance.now();
   const loop = now => {
-    const dt = Math.min(0.05, (now - last) / 1000);
+    const raw = (now - last) / 1000;
+    const dt = Math.min(0.05, raw);
     last = now;
+    // 重い端末では、形のある影をやめてシンプルな丸い影だけにする（1コマ24ms超が続いたら）
+    if (raw < 0.2) {
+      G.frameAvg = (G.frameAvg || 0.016) * 0.97 + raw * 0.03;
+      G.slowT = G.frameAvg > 0.024 ? (G.slowT || 0) + raw : 0;
+      if (G.slowT > 3 && !G.lowFx) G.lowFx = true;
+    }
     update(dt);
     render();
     requestAnimationFrame(loop);
@@ -921,6 +934,7 @@ function fly(name, from, to, h = 26, dur = 0.28, onDone) {
 function updatePlayer(dt) {
   const P = G.player;
   P.hurtT = Math.max(0, (P.hurtT || 0) - dt);
+  P.cheerT = Math.max(0, (P.cheerT || 0) - dt);
   P.invT = Math.max(0, (P.invT || 0) - dt);
   if (P.downT > 0) {
     P.downT -= dt;
@@ -963,7 +977,7 @@ function updatePlayer(dt) {
   });
   if (target && P.atkT <= 0) {
     P.atkT = CONFIG.player.attackCd;
-    P.attackT = 0.18;
+    P.attackT = 0.24;
     P.face = target.x > P.x ? 1 : -1;
     Sound.sfx.swing();
     fxAt('ui/slash', target.x, target.y - (target.boss ? 70 : 45), target.boss ? 120 : 80, P.face > 0 ? -0.3 : 0.3 + Math.PI);
@@ -1011,6 +1025,7 @@ function unlockPad() {
   Sound.sfx.unlock();
   sparks(pad.x, pad.y - 20, 40, ['#ffd23f', '#fff', '#7fe0ff', '#ff9ad5']);
   floatText(pad.x, pad.y - 80, pad.label + '！', '#ffd23f', 30);
+  G.player.cheerT = 1.2;
   G.shake = 6;
   nextPad();
   persist();
@@ -2142,12 +2157,17 @@ function drawPlayer() {
   const moving = Math.hypot(P.vx, P.vy) > 10;
   const bob = moving ? Math.abs(Math.sin(P.walk)) * 4 : Math.sin(G.time * 3) * 1;
   shadow(P.x, P.y, 22);
-  let name = P.attackT > 0 ? 'hero_attack' : (moving ? 'hero_walk' : 'hero_idle');
+  // 歩き4コマ・振りかぶり→振り下ろし・ときどき白い息・喜ぶ
+  let name;
+  if (P.attackT > 0) name = P.attackT > 0.13 ? pick('hero_swing_up', 'hero_attack') : pick('hero_swing', 'hero_attack');
+  else if (moving) name = pick('hero_walk' + (1 + Math.floor(P.walk / Math.PI * 2) % 4), 'hero_walk');
+  else if (P.cheerT > 0) name = pick('hero_cheer', 'hero_idle');
+  else name = G.time % 3 < 0.9 ? pick('hero_idle2', 'hero_idle') : 'hero_idle';
   if (P.hurtT > 0) name = pick('hero_hurt', name);
   drawStack(P, P.y - 48 - bob);
   const blink = P.invT > 0 && Math.sin(G.time * 30) > 0 ? 0.4 : 1;
-  castShadow(name, P.x, P.y, 82, P.face < 0 && name !== 'hero_idle', 0.22);
-  drawSprite(name, P.x, P.y - bob, 82, { flip: P.face < 0 && name !== 'hero_idle', flash: P.hurtT > 0.15, alpha: blink });
+  castShadow(name, P.x, P.y, 82, P.face < 0 && name !== 'hero_idle' && name !== 'hero_cheer', 0.22);
+  drawSprite(name, P.x, P.y - bob, 82, { flip: P.face < 0 && name !== 'hero_idle' && name !== 'hero_cheer', flash: P.hurtT > 0.15, alpha: blink });
   hpBar(P, P.y - 100, 56);
   if (P.stack.length >= P.cap) {
     ctx.font = '900 13px "Hiragino Sans",sans-serif';
