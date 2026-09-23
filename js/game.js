@@ -586,6 +586,7 @@ function setupInput() {
   // タッチした場所へ向かう（パッドや台の近くなら、その真ん中に吸いつく）。
   // 指をつけたまま動かすと指についていき、はなすとその場で止まる
   canvas.addEventListener('pointerdown', e => {
+    if (G.touch && G.touch.id !== e.pointerId) return;   // 2本目の指は無視（1本目の操作を続ける）
     try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* 取れなくても操作は続ける */ }
     G.touch = { id: e.pointerId, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false };
     G.moveTo = snapTarget(touchTarget());
