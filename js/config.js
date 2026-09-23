@@ -149,6 +149,7 @@ const CONFIG = {
     hero_idle: '🧔', hero_walk: '🧔', hero_attack: '🧔', hero_hurt: '🧔',
     mob_axe: '🪓', mob_axe_attack: '🪓', mob_axe_down: '😵', mob_axe_g: '🪓', mob_axe_r: '🪓',
     giant_idle: '👹', giant_walk: '👹', giant_windup: '👹', giant_smash: '👹', giant_throw: '👹', giant_roar: '👹', giant_hurt: '👹', giant_down: '😵', ice_rock: '🧊',
+    station_raw: '🪵', station_raw_full: '🥩', station_cooked: '🍽️', station_cooked_full: '🍖', toolbox: '🧰', signpost: '🪧', lumber: '🪵', bush: '🌿', snowdrift: '⛄',
     watchtower: '🗼', barricade: '🪵', barricade_broken: '🪵', gate_open: '🚪',
     bear_step1: '🐻‍❄️',
     villager_old_m: '🥶', villager_old_m_happy: '😋', villager_old_f: '🥶', villager_old_f_happy: '😋',

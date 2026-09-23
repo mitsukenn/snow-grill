@@ -435,3 +435,7 @@ html, body {
 /* 地図：決戦ステージ */
 .map-node.battle img { filter: drop-shadow(0 0 6px rgba(255, 60, 60, .8)); }
 .map-node.battle .map-state { background: #d8342c; color: #fff; }
+
+/* ふつうの村では、目標人数は列のそばの看板に出すので、上は村の名前だけ */
+.goal.nobar .goal-track, .goal.nobar #goal-num { display: none; }
+.goal.nobar .goal-top { margin-bottom: 0; }

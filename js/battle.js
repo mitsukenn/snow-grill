@@ -228,6 +228,7 @@ function drawGiant(b) {
   else name = Math.sin(b.walk) > 0 ? pick('giant_walk', 'giant_idle', 'bear_boss') : pick('giant_idle', 'bear_boss');
   const bob = b.state === 'walk' ? Math.abs(Math.sin(b.walk)) * 4 : 0;
   const big = b.state === 'windup' ? 1.05 + Math.sin(G.time * 30) * 0.015 : 1;
+  castShadow(name, b.x, b.y, h * big, b.face < 0, 0.3);
   drawSprite(name, b.x, b.y - bob, h * big, { flip: b.face < 0, flash: b.hitT > 0.1, tint: g.tint });
   // 体力ゲージ（大きめ）
   const w = 130;
@@ -363,6 +364,7 @@ function drawRepairSpot() {
   if (!G.barricade || !G.fenceMax || G.fenceHp >= G.fenceMax * 0.95) return;
   const s = repairSpot();
   const k = 1 + Math.sin(G.time * 6) * 0.06;
+  if (images.toolbox) drawSprite('toolbox', s.x + 58, s.y + 8, 38);
   ctx.save();
   ctx.fillStyle = 'rgba(255,170,40,.25)';
   ctx.strokeStyle = '#ff9a3b';

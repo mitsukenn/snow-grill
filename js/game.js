@@ -55,6 +55,36 @@ function drawSprite(name, x, y, h, o = {}) {
   ctx.restore();
 }
 
+// キャラの形をした影（太陽は左上。影は右上へ斜めにのびる）。黒い形は画像ごとに一度だけ作る
+const silhouettes = {};
+function silhouette(name) {
+  if (silhouettes[name]) return silhouettes[name];
+  const im = images[name];
+  if (!im) return null;
+  const c = document.createElement('canvas');
+  const w = 96, h = Math.round(96 * im.height / im.width);   // 影なので小さくてよい
+  c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  g.drawImage(im, 0, 0, w, h);
+  g.globalCompositeOperation = 'source-in';
+  g.fillStyle = '#1c2f4a';
+  g.fillRect(0, 0, w, h);
+  return (silhouettes[name] = c);
+}
+function castShadow(name, x, y, h, flip, alpha = 0.26) {
+  const s = silhouette(name);
+  if (!s) return;
+  const w = h * s.width / s.height;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.transform(1, 0, -0.85, 0.32, 0, 0);   // 地面にたおして、右へななめに
+  if (flip) ctx.scale(-1, 1);
+  // 少しずつずらして重ね、ふちをやわらかく
+  ctx.globalAlpha = alpha / 2.2;
+  [[0, 0], [-3, 0], [3, 0], [0, -4]].forEach(([dx, dy]) => ctx.drawImage(s, -w / 2 + dx, -h + dy, w, h));
+  ctx.restore();
+}
+
 function shadow(x, y, w) {
   ctx.fillStyle = 'rgba(40, 70, 110, .22)';
   ctx.beginPath();
@@ -451,7 +481,8 @@ function edgeDecor() {
     if (k < 0.45) return;   // ところどころ
     const push = p.side === 'l' ? -24 - k * 30 : p.side === 'r' ? 24 + k * 30 : 0;
     const down = p.side === 'b' ? 20 + k * 30 : 0;
-    out.push({ name: k > 0.86 ? 'rock' : 'pine', x: p.x + push, y: p.y + down, h: k > 0.86 ? 34 + k * 14 : 80 + k * 45 });
+    const kind = k > 0.88 ? ['rock', 38] : k > 0.78 ? ['bush', 46] : k > 0.6 ? ['pine', 80 + k * 45] : ['snowdrift', 34 + k * 20];
+    out.push({ name: pick(kind[0], 'rock'), x: p.x + push, y: p.y + down, h: kind[1] });
   });
   return out;
 }
@@ -1246,8 +1277,10 @@ function recruit(cu, type) {
   const h = makeHelper(type);
   if (type !== 'archer') { h.x = cu.x; h.y = cu.y; }
   h.pop = 0;
-  G.helpers.push(h);   // 見た目は役割ごとの服装になる（斧の戦士・運び係・弓使い）
-  G.vs.crew.push({ type });
+  // 見た目：戦う人・弓使いは役割の服装に。運び係（おじさん・おばさん）は本人の見た目のまま
+  if (type === 'carrier') h.kind = cu.baseKind || cu.kind;
+  G.helpers.push(h);
+  G.vs.crew.push({ type, kind: h.kind });
   cu.gone = true;
   G.volunteer = null;
   sparks(h.x, h.y - 40, 24, ['#ffd23f', '#fff', '#7fe0ff']);
@@ -1302,9 +1335,8 @@ function updateHelpers(dt) {
       const loose = G.drops.filter(m => m.state === 'ground' && m.y < 700);
       h.idleT = !bears.length && !loose.length ? h.idleT + dt : 0;
       if (h.stack.length >= H.cap || (h.stack.length && h.idleT > 2.5)) {
-        // 空きのあるグリルを優先（近い順）
-        const full = g => g.raw >= stat('grillCap');
-        const g = G.grills.slice().sort((a, b) => full(a) - full(b) || dist(h, a.inPad) - dist(h, b.inPad))[0];
+        // 生肉の少ないグリルを優先（同じくらいなら近いほう）。2台目にもちゃんと置く
+        const g = G.grills.slice().sort((a, b) => (a.raw - b.raw) || dist(h, a.inPad) - dist(h, b.inPad))[0];
         if (moveTo(h, g.inPad, H.speed, dt) || dist(h, g.inPad) < 40) interactStations(h, dt, 0.08, H.cap, false);
       } else if (loose.length && (!bears.length || h.stack.length === 0 && dist(h, loose[0]) < 120)) {
         moveTo(h, loose.sort((a, b) => dist(h, a) - dist(h, b))[0], H.speed, dt);
@@ -1592,6 +1624,7 @@ function updateHud() {
   if (G.moneyShown == null || G.money < G.moneyShown) { G.moneyShown = G.money; $('money').textContent = fmt(G.money); }
   $('up-btn').classList.toggle('ready', canAffordAnyUpgrade());
   bump('rescued', G.rescued);
+  $('goal').classList.toggle('nobar', !!(G.v && !G.v.battle));
   if (G.battle) battleHud();
   else if (G.v) {
     $('goal-num').textContent = `${Math.min(G.rescued, G.v.goal)} / ${G.v.goal}`;
@@ -1618,6 +1651,7 @@ function render() {
   // 奥（y が小さい）から順に描く
   const list = [];
   CONFIG.decor.forEach(([name, x, y, h]) => list.push({ y, draw: () => { shadow(x, y, h * 0.3); drawSprite(name, x, y, h); } }));
+  if (G.v && !G.v.battle) { const c = G.counters[0]; list.push({ y: c.y + 185, draw: drawGoalSign }); }
   edgeDecor().forEach(d => list.push({ y: d.y, draw: () => { shadow(d.x, d.y, d.h * 0.3); drawSprite(d.name, d.x, d.y, d.h); } }));
   if (G.fire) list.push({ y: G.firePos.y, draw: drawFire });
   G.grills.forEach(g => list.push({ y: g.y, draw: () => drawGrill(g) }));
@@ -1874,10 +1908,18 @@ function drawGrill(g) {
   drawSprite(g.raw > 0 ? 'grill_on' : 'grill_off', 0, 0, 92);
   ctx.restore();
   // 置いてある生肉・焼けた肉の山（生肉はまな板、焼けた肉は大皿の上）
-  drawBoard(g.inPad.x, g.inPad.y);
-  drawPlatter(g.outPad.x, g.outPad.y);
-  pileAt('meat_raw', g.inPad.x, g.inPad.y, g.raw);
-  pileAt('meat_cooked', g.outPad.x, g.outPad.y, g.cooked);
+  if (images.station_raw && images.station_cooked) {
+    // ChatGPT で作った作業台と大皿。たくさんのったら山盛りの絵に
+    drawSprite(g.raw >= 6 ? pick('station_raw_full', 'station_raw') : 'station_raw', g.inPad.x, g.inPad.y + 16, 62);
+    drawSprite(g.cooked >= 6 ? pick('station_cooked_full', 'station_cooked') : 'station_cooked', g.outPad.x, g.outPad.y + 16, 62);
+    if (g.raw < 6) pileAt('meat_raw', g.inPad.x, g.inPad.y - 26, g.raw); else pileCount(g.inPad.x, g.inPad.y - 50, g.raw);
+    if (g.cooked < 6) pileAt('meat_cooked', g.outPad.x, g.outPad.y - 26, g.cooked); else pileCount(g.outPad.x, g.outPad.y - 50, g.cooked);
+  } else {
+    drawBoard(g.inPad.x, g.inPad.y);
+    drawPlatter(g.outPad.x, g.outPad.y);
+    pileAt('meat_raw', g.inPad.x, g.inPad.y, g.raw);
+    pileAt('meat_cooked', g.outPad.x, g.outPad.y, g.cooked);
+  }
   if (g.raw > 0) {
     // 焼き具合のゲージ
     ctx.fillStyle = 'rgba(0,0,0,.35)';
@@ -1919,6 +1961,17 @@ function drawPlatter(x, y) {
   ctx.fillStyle = 'rgba(255,255,255,.55)';
   ctx.beginPath(); ctx.ellipse(x - 14, y - 9, 8, 2.5, -0.2, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
+}
+
+// 山盛りのときは数だけ出す
+function pileCount(x, y, n) {
+  ctx.font = '900 15px "Hiragino Sans",sans-serif';
+  ctx.textAlign = 'center';
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = 'rgba(20,40,80,.85)';
+  ctx.strokeText(n, x, y);
+  ctx.fillStyle = '#fff';
+  ctx.fillText(n, x, y);
 }
 
 function pileAt(name, x, y, n) {
@@ -2013,7 +2066,7 @@ function drawBear(b) {
     ctx.beginPath(); ctx.ellipse(b.x, b.y, reach * p, reach * 0.55 * p, 0, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
   }
-  shadow(b.x, b.y, h * 0.42);
+  shadow(b.x, b.y, h * 0.34);
   if (b.state === 'dead') {
     drawSprite('bear_down', b.x, b.y, h * 0.75, { alpha: clamp(b.deadT / 0.7, 0, 1), flip: b.face < 0 });
     return;
@@ -2030,6 +2083,7 @@ function drawBear(b) {
   const bob = b.state === 'wander' || b.state === 'chase' ? Math.abs(Math.sin(b.walk)) * 3 : 0;
   const big = b.state === 'windup' ? 1.08 + Math.sin(G.time * 30) * 0.02 : b.state === 'strike' ? 1.12 : 1;
   const lunge = b.state === 'strike' ? b.face * 10 : 0;
+  castShadow(name, b.x + lunge, b.y, h * big * (0.4 + 0.6 * k), b.face < 0);
   drawSprite(name, b.x + lunge, b.y - bob, h * big * (0.4 + 0.6 * k), { flip: b.face < 0, flash: b.hitT > 0.08, tint: b.state === 'windup' && Math.sin(G.time * 24) > 0 ? 'rgba(255,60,60,.35)' : null });
   if (b.hp < b.maxHp) {
     const w = b.boss ? 90 : 56;
@@ -2092,6 +2146,7 @@ function drawPlayer() {
   if (P.hurtT > 0) name = pick('hero_hurt', name);
   drawStack(P, P.y - 48 - bob);
   const blink = P.invT > 0 && Math.sin(G.time * 30) > 0 ? 0.4 : 1;
+  castShadow(name, P.x, P.y, 82, P.face < 0 && name !== 'hero_idle', 0.22);
   drawSprite(name, P.x, P.y - bob, 82, { flip: P.face < 0 && name !== 'hero_idle', flash: P.hurtT > 0.15, alpha: blink });
   hpBar(P, P.y - 100, 56);
   if (P.stack.length >= P.cap) {
@@ -2231,6 +2286,37 @@ function drawTower(h) {
   } else if (h) drawSprite(pick('archer_aim', 'helper_hunter'), x, y - top + 4 + bob, 62, { flip: h.face < 0, squash: h.attackT > 0 ? 0.06 : 0 });
   ctx.restore();
   if (h) drawSay(h, y - top - 70);
+}
+
+// 村人の列のそばに立つ看板：あと何人救えば開拓完了か
+function drawGoalSign() {
+  if (!G.v || G.v.battle) return;
+  const c = G.counters[0];
+  const x = c.x - 80, y = c.y + 185;   // 志願者の立つ場所より少し手前
+  const done = G.vs.done;
+  const left = Math.max(0, G.v.goal - G.rescued);
+  shadow(x, y, 26);
+  drawSprite(pick('signpost', 'tent'), x, y + 6, 112);
+  ctx.save();
+  ctx.textAlign = 'center';
+  const ty = y - 76;
+  ctx.font = '900 13px "Hiragino Sans",sans-serif';
+  ctx.fillStyle = '#fff3d6';
+  ctx.fillText(done ? '開拓完了！' : 'あと', x, ty - 8);
+  if (!done) {
+    ctx.font = '900 25px "Hiragino Sans",sans-serif';
+    ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(70,35,10,.9)';
+    ctx.strokeText(left + '人', x, ty + 12);
+    ctx.fillStyle = '#ffdf5b';
+    ctx.fillText(left + '人', x, ty + 12);
+  }
+  // 進み具合のバー
+  const w = 70, r = Math.min(1, G.rescued / G.v.goal);
+  ctx.fillStyle = 'rgba(40,20,5,.65)';
+  roundRect(x - w / 2, ty + 18, w, 8, 4); ctx.fill();
+  ctx.fillStyle = done ? '#ffd23f' : '#4fd46a';
+  roundRect(x - w / 2, ty + 18, w * r, 8, 4); ctx.fill();
+  ctx.restore();
 }
 
 function drawFire() {
