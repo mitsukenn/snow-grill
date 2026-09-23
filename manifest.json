@@ -1,0 +1,15 @@
+{
+  "name": "スノーグリル",
+  "short_name": "スノーグリル",
+  "description": "白クマを倒して肉を焼き、凍えた人に配る放置系アクション",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1c3550",
+  "theme_color": "#5aa9e6",
+  "icons": [
+    { "src": "img/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "img/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

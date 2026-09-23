@@ -1,0 +1,138 @@
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: #1c3550;
+  font-family: "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+
+#app {
+  position: relative;
+  max-width: 480px;
+  height: 100dvh;
+  margin: 0 auto;
+  overflow: hidden;
+  background: #eaf4fb;
+}
+
+#game {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+/* ===== 上の表示 ===== */
+.hud {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  pointer-events: none;
+}
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 14px 0 6px;
+  border-radius: 99px;
+  background: rgba(20, 45, 80, .6);
+  color: #fff;
+  font-size: 20px;
+  font-weight: 900;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, .35);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .25);
+}
+.chip img { width: 32px; height: 32px; object-fit: contain; }
+.chip .ico { font-size: 22px; margin-left: 4px; }
+.chip small { font-size: 11px; font-weight: 700; opacity: .9; }
+.money { min-width: 110px; }
+.hud-btn {
+  margin-left: auto;
+  width: 44px;
+  height: 40px;
+  border: 0;
+  border-radius: 12px;
+  font-size: 20px;
+  background: linear-gradient(#5b9bff, #2466d8);
+  box-shadow: 0 4px 0 #173a7a;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+/* ===== 次にやること ===== */
+.guide {
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 24px);
+  padding: 8px 16px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, .95);
+  color: #1d3a5f;
+  font-size: 15px;
+  font-weight: 900;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .2);
+  pointer-events: none;
+  animation: guideIn .3s;
+}
+.guide.hidden { display: none; }
+@keyframes guideIn { from { transform: translate(-50%, -10px); opacity: 0; } }
+
+/* ===== スタート画面 ===== */
+.start {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 50% 40%, rgba(255, 255, 255, .2), transparent 60%),
+    linear-gradient(rgba(30, 70, 120, .75), rgba(20, 45, 80, .9));
+  color: #fff;
+  text-align: center;
+  cursor: pointer;
+}
+.start.hidden { display: none; }
+.logo {
+  margin: 0;
+  font-size: 60px;
+  line-height: 1;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: .04em;
+  transform: rotate(-4deg);
+  text-shadow: 0 3px 0 #7fb8e6, 0 6px 0 #4d8bb8, 0 9px 0 #2d5f8a, 0 14px 20px rgba(0, 0, 0, .5);
+  animation: logoDrop .9s cubic-bezier(.3, 1.6, .5, 1) both;
+}
+@keyframes logoDrop { from { transform: translateY(-120%) rotate(-4deg) scale(1.5); opacity: 0; } }
+.story { margin: 0; font-size: 16px; font-weight: 700; line-height: 1.6; }
+.howto { margin: 0; font-size: 13px; opacity: .85; line-height: 1.6; }
+.big-btn {
+  font-size: 22px;
+  font-weight: 900;
+  padding: 14px 28px;
+  color: #fff;
+  border: 0;
+  border-radius: 16px;
+  background: linear-gradient(#ffb347, #ff7a18);
+  box-shadow: 0 6px 0 #a34700, 0 10px 16px rgba(0, 0, 0, .3);
+  animation: pulse 1.4s ease-in-out infinite;
+  cursor: pointer;
+}
+@keyframes pulse { 50% { transform: scale(1.06); } }

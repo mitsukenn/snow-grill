@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#5aa9e6">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>スノーグリル</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="img/icon-192.png">
+  <link rel="apple-touch-icon" href="img/icon-192.png">
+  <link rel="stylesheet" href="style.css?v=20260924a">
+</head>
+<body>
+  <div id="app">
+    <canvas id="game"></canvas>
+
+    <header class="hud">
+      <div class="chip money"><img src="img/ui/coin.webp" alt=""><span id="money">0</span></div>
+      <div class="chip rescued"><span class="ico">🧑‍🤝‍🧑</span><span id="rescued">0</span><small>人を救った</small></div>
+      <button id="mute-btn" class="hud-btn" aria-label="音のオン・オフ">🔊</button>
+    </header>
+    <div id="guide" class="guide hidden"></div>
+
+    <div id="start" class="start">
+      <h1 class="logo">スノー<br>グリル</h1>
+      <p class="story">吹雪の雪原。凍えた人たちが<br>あたたかい肉を待っている…！</p>
+      <button class="big-btn">▶ タップしてスタート</button>
+      <p class="howto">画面のどこでも押してドラッグで移動<br>白クマに近づくと自動で攻撃！</p>
+    </div>
+  </div>
+
+  <script src="js/config.js?v=20260924a"></script>
+  <script src="js/audio.js?v=20260924a"></script>
+  <script src="js/game.js?v=20260924a"></script>
+</body>
+</html>
