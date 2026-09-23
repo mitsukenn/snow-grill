@@ -62,17 +62,36 @@ function shadow(x, y, w) {
 // ============================================================
 //  セーブ
 // ============================================================
-const SAVE_KEY = 'snowGrill.v1';
+const SAVE_KEY = 'snowGrill.v2';
+let SAVE = null;
+// セーブ：お金・強化・今いる村・村ごとの進み具合（設備・救った人数・開拓完了）・読んだ会話
 function loadSave() {
-  if (new URLSearchParams(location.search).has('reset')) localStorage.removeItem(SAVE_KEY);
-  try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch (e) { return {}; }
+  if (new URLSearchParams(location.search).has('reset')) {
+    localStorage.removeItem(SAVE_KEY);
+    localStorage.removeItem('snowGrill.v1');
+  }
+  let s = null, old = null;
+  try { s = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) { /* 読めなければ新規 */ }
+  if (!s) {
+    // 前のバージョン（村が1つだけ）のセーブを、最初の村の進み具合として引き継ぐ
+    try { old = JSON.parse(localStorage.getItem('snowGrill.v1')); } catch (e) { /* 無し */ }
+    s = { money: 0, up: {}, cur: 'camp', villages: {}, seen: {} };
+    if (old) {
+      Object.assign(s, { money: old.money || 0, up: old.up || {}, muted: old.muted });
+      s.villages.camp = { unlockIdx: Math.min(old.unlockIdx || 0, CONFIG.unlocks.length), rescued: old.rescued || 0, kills: old.kills || 0 };
+      s.seen.intro_camp = true;
+    }
+  }
+  s.villages = s.villages || {};
+  s.seen = s.seen || {};
+  s.up = s.up || {};
+  return s;
 }
 function persist() {
-  try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify({
-      money: G.money, rescued: G.rescued, unlockIdx: G.unlockIdx, kills: G.kills, muted: G.muted, up: G.up,
-    }));
-  } catch (e) { /* 保存できない環境では無視 */ }
+  if (!SAVE) return;
+  Object.assign(SAVE, { money: G.money, up: G.up, muted: G.muted, cur: G.cur });
+  if (G.vs) Object.assign(G.vs, { unlockIdx: G.unlockIdx, rescued: G.rescued, kills: G.kills });
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(SAVE)); } catch (e) { /* 保存できない環境では無視 */ }
 }
 
 // ============================================================
@@ -107,12 +126,13 @@ function makeHelper(type) {
 // i 番目の解放。リストの後は「何度でも買える強化」を順番に繰り返し、値段はだんだん上がる
 function unlockAt(i) {
   const list = CONFIG.unlocks;
-  if (i < list.length) return list[i];
+  const mul = G.v ? G.v.priceMul : 1;
+  if (i < list.length) return { ...list[i], price: Math.round(list[i].price * mul) };
   const rep = CONFIG.repeatUnlocks;
   const n = i - list.length;
   const r = rep[n % rep.length];
   const lv = Math.floor(n / rep.length);
-  return { ...r, label: `${r.label} Lv${lv + 1}`, price: Math.round(r.base * Math.pow(CONFIG.repeatGrowth, lv)) };
+  return { ...r, label: `${r.label} Lv${lv + 1}`, price: Math.round(r.base * mul * Math.pow(CONFIG.repeatGrowth, lv)) };
 }
 
 function applyUnlock(id, fromSave) {
@@ -125,7 +145,7 @@ function applyUnlock(id, fromSave) {
     case 'carrier': made = makeHelper('carrier'); G.helpers.push(made); break;
     case 'counter2': made = makeCounter(CONFIG.counters[1]); G.counters.push(made); break;
     case 'fire': G.fire = true; G.firePos = { x: u.x, y: u.y }; break;
-    case 'huntArea': G.maxBears = 5; G.bossOn = true; break;
+    case 'huntArea': G.maxBears += 2; G.bossOn = true; break;
   }
   if (made && !fromSave) made.pop = 0;
 }
@@ -195,6 +215,51 @@ function openUpgrades(open) {
   if (open) { renderUpgrades(); Sound.sfx.click(); }
 }
 
+// ============================================================
+//  村に入る：設備・白クマ・お客さんを村ごとに作り直す
+// ============================================================
+function enterVillage(id) {
+  if (G.vs) persist();
+  G.cur = id;
+  G.v = villageById(id);
+  G.vs = SAVE.villages[id] = SAVE.villages[id] || { unlockIdx: 0, rescued: 0, kills: 0, done: false };
+  Object.assign(G, {
+    bears: [], drops: [], customers: [], helpers: [], flyers: [], texts: [], parts: [], steps: [], fx: [],
+    fire: false, bossOn: !!G.v.boss, maxBears: CONFIG.bear.max + G.v.extraBears, spawnT: 0, bearT: 0, moveTo: null,
+  });
+  G.grills = [makeGrill(CONFIG.grills[0])];
+  G.counters = [makeCounter(CONFIG.counters[0])];
+  Object.assign(G.player, { x: CONFIG.playerStart.x, y: CONFIG.playerStart.y, vx: 0, vy: 0, stack: [] });
+  G.rescued = G.vs.rescued || 0;
+  G.kills = G.vs.kills || 0;
+  G.unlockIdx = G.vs.unlockIdx || 0;
+  for (let i = 0; i < G.unlockIdx; i++) applyUnlock(unlockAt(i).id, true);
+  nextPad();
+  for (let i = 0; i < G.maxBears; i++) spawnBear(false);
+  // はじめての村では、すぐ目の前に白クマを置いて、いきなり戦えるように
+  if (!G.unlockIdx && !G.rescued) Object.assign(G.bears[0], { x: CONFIG.firstBear.x, y: CONFIG.firstBear.y, tx: CONFIG.firstBear.x, ty: CONFIG.firstBear.y, t: 4 });
+  G.snow = [];
+  for (let i = 0; i < G.v.snow; i++) G.snow.push({ x: Math.random(), y: Math.random(), s: rand(1, 3), v: rand(20, 50) * (G.v.snow > 120 ? 2.2 : 1) });
+  if (G.viewW) {
+    G.cam.x = clamp(G.player.x - G.viewW / 2, 0, CONFIG.world.w - G.viewW);
+    G.cam.y = clamp(G.player.y - G.viewH * 0.55, 0, Math.max(0, CONFIG.world.h - G.viewH));
+  }
+  $('village-name').textContent = G.v.name;
+  updateHud();
+  persist();
+}
+
+// 村の目標を達成：お祝い → 会話 → 全体マップ
+function villageClear() {
+  G.vs.done = true;
+  persist();
+  Sound.sfx.unlock();
+  floatText(G.player.x, G.player.y - 140, '開拓完了！', '#ffd23f', 42);
+  sparks(G.player.x, G.player.y - 60, 60, ['#ffd23f', '#fff', '#7fe0ff', '#ff9ad5']);
+  G.shake = 10;
+  setTimeout(() => showStory(G.v.outro, () => openMap(true)), 1600);
+}
+
 function nextPad() {
   G.pad = { ...unlockAt(G.unlockIdx), paid: 0, payT: 0, pulse: 0 };
 }
@@ -203,27 +268,17 @@ function init() {
   canvas = $('game');
   ctx = canvas.getContext('2d');
   loadImages();
-  const s = loadSave();
-  G.muted = !!s.muted;
+  SAVE = loadSave();
+  G.muted = !!SAVE.muted;
   Sound.setMuted(G.muted);
   G.player = {
     x: CONFIG.playerStart.x, y: CONFIG.playerStart.y, vx: 0, vy: 0, face: 1, stack: [],
     cap: CONFIG.player.cap, damage: CONFIG.player.damage, atkT: 0, attackT: 0, xferT: 0, walk: 0,
   };
-  G.grills.push(makeGrill(CONFIG.grills[0]));
-  G.counters.push(makeCounter(CONFIG.counters[0]));
-  G.money = s.money || 0;
-  G.rescued = s.rescued || 0;
-  G.kills = s.kills || 0;
-  G.up = s.up || {};
+  G.money = SAVE.money || 0;
+  G.up = SAVE.up || {};
   applyUpgrades();
-  G.unlockIdx = s.unlockIdx || 0;
-  for (let i = 0; i < G.unlockIdx; i++) applyUnlock(unlockAt(i).id, true);
-  nextPad();
-  for (let i = 0; i < G.maxBears; i++) spawnBear(false);
-  // はじめて遊ぶときは、すぐ目の前に白クマを置いて、いきなり戦えるように
-  if (!G.unlockIdx && !G.rescued) Object.assign(G.bears[0], { x: CONFIG.firstBear.x, y: CONFIG.firstBear.y, tx: CONFIG.firstBear.x, ty: CONFIG.firstBear.y, t: 4 });
-  for (let i = 0; i < 70; i++) G.snow.push({ x: Math.random(), y: Math.random(), s: rand(1, 3), v: rand(20, 50) });
+  enterVillage(SAVE.cur || 'camp');
 
   setupInput();
   window.addEventListener('resize', resize);
@@ -237,11 +292,19 @@ function init() {
     persist();
   };
   $('up-btn').onclick = () => openUpgrades(true);
+  $('map-btn').onclick = () => openMap(true);
+  $('map-close').onclick = () => openMap(false);
   $('up-close').onclick = () => openUpgrades(false);
   $('start').onclick = () => {
     $('start').classList.add('hidden');
     Sound.startBgm();
     Sound.sfx.click();
+    // はじめてその村に来たときは、村の会話から
+    if (!SAVE.seen['intro_' + G.cur]) {
+      SAVE.seen['intro_' + G.cur] = true;
+      persist();
+      showStory(G.v.intro);
+    }
   };
   setInterval(persist, 3000);
   let last = performance.now();
@@ -334,7 +397,7 @@ function spawnBear(boss) {
     x = rand(a.x + 40, a.x + a.w - 40);
     y = rand(a.y + 40, a.y + a.h - 40);
   } while (G.player && dist({ x, y }, G.player) < 220 && ++tries < 20);
-  const hp = boss ? CONFIG.bossBear.hp : CONFIG.bear.hp;
+  const hp = Math.round((boss ? CONFIG.bossBear.hp : CONFIG.bear.hp) * G.v.bearHp);
   G.bears.push({ x, y, hp, maxHp: hp, boss, tx: x, ty: y, t: rand(0, 2), hitT: 0, face: 1, state: 'wander', deadT: 0, pop: 0, walk: 0 });
   if (boss) {
     Sound.sfx.roar();
@@ -359,7 +422,7 @@ function hitBear(b, dmg, from) {
     b.deadT = 0.7;
     G.kills++;
     Sound.sfx.bearDown();
-    const n = b.boss ? CONFIG.bossBear.meat : CONFIG.bear.meat;
+    const n = (b.boss ? CONFIG.bossBear.meat : CONFIG.bear.meat) + G.v.meatBonus;
     for (let i = 0; i < n; i++) dropMeat(b.x, b.y - 20);
     sparks(b.x, b.y - 30, b.boss ? 30 : 14, ['#fff', '#e8f4ff', '#ffb3b3']);
     fxAt('ui/explosion', b.x, b.y - 30, b.boss ? 200 : 120);
@@ -607,7 +670,7 @@ function updateCustomers(dt) {
     G.spawnT = rand(...C.spawnSec);
     const kinds = ['villager_m', 'villager_f', 'villager_child'];
     const cu = {
-      x: counter.x + rand(-30, 30), y: CONFIG.world.h + 40, want: randInt(...C.want), got: 0,
+      x: counter.x + rand(-30, 30), y: CONFIG.world.h + 40, want: randInt(...G.v.want), got: 0,
       kind: kinds[randInt(0, 2)], state: 'queue', counter, walk: 0, face: 1, pop: 1,
     };
     counter.queue.push(cu);
@@ -642,6 +705,7 @@ function updateCustomers(dt) {
           c.queue.shift();
           G.rescued++;
           updateHud();
+          if (!G.vs.done && G.rescued >= G.v.goal) villageClear();
         }
       }
     }
@@ -854,6 +918,11 @@ function updateHud() {
   bump('money', G.money);
   $('up-btn').classList.toggle('ready', canAffordAnyUpgrade());
   bump('rescued', G.rescued);
+  if (G.v) {
+    $('goal-num').textContent = `${Math.min(G.rescued, G.v.goal)} / ${G.v.goal}`;
+    $('goal-bar').style.width = Math.min(100, G.rescued / G.v.goal * 100) + '%';
+    $('goal').classList.toggle('done', !!(G.vs && G.vs.done));
+  }
 }
 
 // ============================================================
@@ -968,6 +1037,7 @@ function drawGround() {
   ctx.fillStyle = 'rgba(120,170,220,.12)';
   roundRect(a.x, a.y, a.w, a.h, 40);
   ctx.fill();
+  if (G.v.tint) { ctx.fillStyle = G.v.tint; ctx.fillRect(0, 0, W, H); }
   drawFence(a);
   // キャンプ側は少しあたたかい色（踏み固められた雪）
   const cg = ctx.createLinearGradient(0, a.y + a.h + 60, 0, H);

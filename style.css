@@ -56,9 +56,11 @@ html, body {
 .chip img { width: 32px; height: 32px; object-fit: contain; }
 .chip .ico { font-size: 22px; margin-left: 4px; }
 .chip small { font-size: 11px; font-weight: 700; opacity: .9; }
-.money { min-width: 110px; }
+.money { min-width: 96px; }
+.hud .chip.rescued { flex: 0 1 auto; }
+.hud-btn.map { margin-left: auto; }
 .hud-btn {
-  margin-left: auto;
+  margin-left: 0;
   width: 44px;
   height: 40px;
   border: 0;
@@ -260,3 +262,122 @@ html, body {
 .up-buy img { width: 22px; }
 .up-buy:disabled { filter: grayscale(1); opacity: .55; cursor: default; }
 .up-buy:not(:disabled):active { transform: translateY(3px); box-shadow: 0 1px 0 #0f5e21; }
+
+/* ===== 村の目標（救った人数のゲージ） ===== */
+.goal {
+  position: absolute;
+  top: 56px;
+  left: 12px;
+  right: 12px;
+  padding: 4px 10px 6px;
+  border-radius: 12px;
+  background: rgba(20, 45, 80, .55);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  pointer-events: none;
+}
+.goal-top { display: flex; justify-content: space-between; margin-bottom: 3px; text-shadow: 0 1px 0 rgba(0, 0, 0, .4); }
+.goal-track { height: 8px; border-radius: 4px; background: rgba(255, 255, 255, .25); overflow: hidden; }
+.goal-bar { height: 100%; width: 0; border-radius: 4px; background: linear-gradient(90deg, #7fe0ff, #4fd46a); transition: width .4s; }
+.goal.done .goal-bar { background: linear-gradient(90deg, #ffd23f, #ff9a3b); }
+.guide { top: 104px; }
+
+/* ===== 全体マップ ===== */
+.map {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, .6), transparent 40%),
+    radial-gradient(circle at 80% 70%, rgba(180, 215, 245, .7), transparent 45%),
+    linear-gradient(#cfe6f7, #eef6fc);
+}
+.map.hidden { display: none; }
+.map-head { display: flex; align-items: center; padding: 14px 16px 6px; }
+.map-head h2 { margin: 0; font-size: 22px; color: #1d3a5f; }
+.map-head .up-close { margin-left: auto; }
+.map-area { position: relative; flex: 1; margin: 6px 18px; }
+.map-path { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.map-path .road { fill: none; stroke: rgba(120, 140, 170, .45); stroke-width: 1.6; stroke-dasharray: 2 2; vector-effect: non-scaling-stroke; stroke-width: 6; }
+.map-path .road.open { stroke: #e3a13a; stroke-dasharray: none; stroke-width: 7; }
+.map-node {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 130px;
+  transform: translate(-50%, -60%);
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.map-node img {
+  width: 76px;
+  height: 76px;
+  object-fit: contain;
+  padding: 6px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 4px #7fb8e6, 0 6px 12px rgba(0, 0, 0, .25);
+}
+.map-node.done img { box-shadow: 0 0 0 4px #ffd23f, 0 6px 12px rgba(0, 0, 0, .25); }
+.map-node.current img { animation: nodePulse 1.2s ease-in-out infinite; }
+@keyframes nodePulse { 50% { transform: scale(1.1); box-shadow: 0 0 0 6px #ff9a3b, 0 0 20px #ffd23f; } }
+.map-node.locked { cursor: default; }
+.map-node.locked img { filter: grayscale(1) brightness(.8); opacity: .7; }
+.map-name { margin-top: 6px; padding: 2px 8px; border-radius: 8px; background: rgba(29, 58, 95, .85); color: #fff; font-size: 12px; font-weight: 900; white-space: nowrap; }
+.map-state { margin-top: 2px; font-size: 12px; font-weight: 900; color: #1d3a5f; }
+.map-node.done .map-state { color: #c07a00; }
+.map-note { margin: 0 0 calc(14px + env(safe-area-inset-bottom)); text-align: center; font-size: 13px; font-weight: 700; color: #3a5a80; }
+
+/* ===== 会話 ===== */
+.story {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: flex-end;
+  padding: 16px 12px calc(20px + env(safe-area-inset-bottom));
+  background: linear-gradient(transparent 35%, rgba(10, 25, 45, .75));
+  cursor: pointer;
+}
+.story.hidden { display: none; }
+.story-face {
+  position: absolute;
+  left: 8px;
+  bottom: 170px;
+  width: 150px;
+  filter: drop-shadow(0 8px 10px rgba(0, 0, 0, .4));
+  animation: faceIn .3s ease-out;
+}
+.story-face.hidden { display: none; }
+@keyframes faceIn { from { transform: translateX(-30px); opacity: 0; } }
+.story-box {
+  position: relative;
+  width: 100%;
+  min-height: 130px;
+  padding: 26px 16px 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, .96);
+  box-shadow: 0 0 0 3px #7fb8e6, 0 8px 20px rgba(0, 0, 0, .3);
+  color: #1d3a5f;
+}
+.story-box.narr { background: rgba(20, 40, 70, .92); color: #fff; box-shadow: 0 0 0 3px rgba(255, 255, 255, .4); text-align: center; }
+.story-name {
+  position: absolute;
+  top: -14px;
+  left: 14px;
+  padding: 4px 14px;
+  border-radius: 99px;
+  background: linear-gradient(#ffb347, #ff7a18);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 900;
+}
+.story-name.hidden { display: none; }
+.story-text { font-size: 17px; font-weight: 700; line-height: 1.6; min-height: 54px; }
+.story-next { margin-top: 6px; text-align: right; font-size: 12px; opacity: .6; animation: nextBlink 1s steps(2) infinite; }
+@keyframes nextBlink { 50% { opacity: .2; } }
