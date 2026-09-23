@@ -75,6 +75,10 @@ const Sound = (() => {
     click: () => tone(900, 40, 'square', 0.03),
     happy: throttle('happy', 150, () => [784, 988].forEach((f, i) => tone(f, 90, 'sine', 0.05, i * 0.06))),
     roar: () => { noise(500, 0.2, 300, 0, 120); tone(70, 500, 'sawtooth', 0.08); },
+    growl: throttle('growl', 300, () => { noise(300, 0.1, 250, 0, 90); tone(90, 300, 'sawtooth', 0.05); }),
+    claw: throttle('claw', 100, () => noise(160, 0.16, 1200, 0, 400)),
+    hurt: throttle('hurt', 150, () => { tone(300, 160, 'square', 0.06); tone(180, 200, 'square', 0.05, 0.05); }),
+    arrow: throttle('arrow', 80, () => noise(90, 0.06, 2500, 0, 5000)),
   };
 
   // BGM：のんびりした雪原のループ

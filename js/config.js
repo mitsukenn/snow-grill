@@ -39,8 +39,23 @@ const CONFIG = {
   },
 
   helper: {
-    hunter: { speed: 150, damage: 1, attackCd: 0.7, cap: 5 },
+    sword: { speed: 155, damage: 1, attackCd: 0.45, reach: 85, cap: 8, hp: 50, pickup: 90, max: 8 },   // 斧の助っ人（モブ）：戦って肉を集め、いっぱいになったらグリルへ
+    archer: { range: 330, damage: 1, attackCd: 0.9, post: { x: 120, y: 650 } },   // 弓使い：見張り台の上から矢を射る（外には出ない）
     carrier: { speed: 170, cap: 6 },
+    downSec: 6,              // 倒れてから起き上がるまでの秒数
+  },
+
+  // ---- 戦闘：白クマも攻撃してくる ----
+  combat: {
+    aggro: 140,              // この距離に入ると白クマが追いかけてくる
+    chaseSpeed: 72,
+    reach: 62,               // 攻撃が届く距離
+    windup: 0.6,             // 攻撃の前の「ため」（この間に逃げればよけられる）
+    cooldown: 1.4,
+    damage: 12,              // 白クマの攻撃力（村の bearHp 倍率がかかる）
+    boss: { windup: 0.9, reach: 100, damageMul: 2.5 },
+    regenDelay: 2,           // 攻撃を受けてから回復が始まるまでの秒数
+    downSec: 2.5,            // 主人公が倒れてからキャンプで起き上がるまで
   },
 
   // ---- マップ ----
@@ -56,8 +71,10 @@ const CONFIG = {
   // ---- 解放（お金を払うと設備が増える）。上から順に1つずつ現れる ----
   unlocks: [
     { id: 'grill2', label: 'グリル2台目', price: 25, x: 205, y: 1060 },
-    { id: 'hunter', label: '助っ人ハンター', price: 90, x: 330, y: 680 },
+    { id: 'barricade', label: 'バリケード（白クマを防ぐ）', price: 45, x: 460, y: 690 },
+    { id: 'hunter', label: '斧の助っ人 ×2', price: 90, x: 330, y: 690 },
     { id: 'carrier', label: '運び係', price: 140, x: 330, y: 930 },
+    { id: 'archer', label: '見張り台と弓使い', price: 200, x: 120, y: 690 },
     { id: 'counter2', label: '配給台2つ目', price: 280, x: 610, y: 980 },
     { id: 'fire', label: 'キャンプファイヤー', price: 380, x: 330, y: 1270 },
     { id: 'huntArea', label: '狩り場拡張（ボス出現）', price: 500, x: 560, y: 660 },
@@ -67,21 +84,36 @@ const CONFIG = {
     { id: 'cap', label: '背中に積める肉', icon: 'meat_raw', unit: '個', base: 8, step: 3, max: 12, cost: [15, 1.45] },
     { id: 'grillCap', label: 'グリルに置ける肉', icon: 'grill_on', unit: '個', base: 10, step: 5, max: 10, cost: [25, 1.5] },
     { id: 'counterCap', label: '配給台に置ける肉', icon: 'counter', unit: '個', base: 10, step: 5, max: 10, cost: [25, 1.5] },
-    { id: 'damage', label: '斧の攻撃力', icon: 'hero_attack', unit: '', base: 1, step: 1, max: 8, cost: [40, 1.7] },
+    { id: 'damage', label: '武器（斧）', icon: 'axe_wood', unit: '', base: 1, step: 1, max: 8, cost: [40, 1.7] },
+    { id: 'hp', label: '体力', icon: 'hero_idle', unit: '', base: 100, step: 25, max: 10, cost: [35, 1.5] },
+    { id: 'regen', label: '回復の速さ', icon: 'meat_cooked', unit: '/秒', base: 6, step: 3, max: 8, cost: [30, 1.5] },
     { id: 'speed', label: '移動の速さ', icon: 'hero_walk', unit: '', base: 240, step: 15, max: 8, cost: [30, 1.55] },
     { id: 'cook', label: '焼く速さ', icon: 'meat_cooked', unit: '秒', base: 0.9, step: -0.08, max: 7, cost: [35, 1.6] },
     { id: 'pay', label: '肉1個の支払い', icon: 'coins_pile', unit: '', base: 6, step: 1, max: 15, cost: [50, 1.45] },
   ],
 
+  // 武器レベルごとの見た目（斧のアイコン）
+  weaponLooks: [[1, 'axe_wood', '木の斧'], [4, 'axe_iron', '鉄の斧'], [7, 'axe_gold', '伝説の大斧']],
+
   // リストを全部解放したあとは、何度でも買える強化が順番に出てくる（値段はだんだん上がる）
   repeatUnlocks: [
-    { id: 'moreBears', label: '白クマ +1', base: 700, x: 330, y: 680 },
+    { id: 'moreBears', label: '白クマ +1', base: 700, x: 330, y: 690 },
+    { id: 'moreAxe', label: '斧の助っ人 +1', base: 450, x: 250, y: 690 },
   ],
   repeatGrowth: 1.35,        // 買うたびに値段が何倍になるか
 
   // ---- 見た目（ChatGPT で作った素材。無ければ絵文字で表示） ----
   sprites: {
-    hero_idle: '🧔', hero_walk: '🧔', hero_attack: '🧔',
+    hero_idle: '🧔', hero_walk: '🧔', hero_attack: '🧔', hero_hurt: '🧔',
+    mob_axe: '🪓', mob_axe_attack: '🪓', mob_axe_down: '😵', mob_axe_g: '🪓', mob_axe_r: '🪓',
+    watchtower: '🗼', barricade: '🪵', barricade_broken: '🪵', gate_open: '🚪',
+    bear_step1: '🐻‍❄️',
+    villager_old_m: '🥶', villager_old_m_happy: '😋', villager_old_f: '🥶', villager_old_f_happy: '😋',
+    villager_girl: '🥶', villager_girl_happy: '😋', villager_fisher: '🥶', villager_fisher_happy: '😋', villager_mother: '🥶',
+    swordsman: '⚔️', swordsman_attack: '⚔️', swordsman_down: '😵', archer_aim: '🏹', archer_down: '😵',
+    axe_wood: '🪓', axe_iron: '🪓', axe_gold: '🪓',
+    bear_walk2: '🐻‍❄️', bear_run: '🐻‍❄️', bear_claw_up: '🐻‍❄️', bear_claw: '🐻‍❄️', bear_bite: '🐻‍❄️',
+    bear_roar: '🐻‍❄️', bear_hurt: '🐻‍❄️', bear_sleep: '🐻‍❄️',
     helper_hunter: '🏹', helper_cook: '🧑‍🍳',
     villager_m: '🥶', villager_f: '🥶', villager_child: '🥶', villager_happy: '😋',
     bear_walk: '🐻‍❄️', bear_stand: '🐻‍❄️', bear_down: '😵', bear_boss: '🐻‍❄️',

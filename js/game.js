@@ -28,6 +28,9 @@ function loadImages() {
   });
 }
 
+// 画像がまだ無いときは、後ろの名前の画像で代用する
+const pick = (...names) => names.find(n => images[n]) || names[names.length - 1];
+
 // 足元（x, y）を基準に、高さ h で描く
 function drawSprite(name, x, y, h, o = {}) {
   const im = images[name];
@@ -100,9 +103,9 @@ function persist() {
 let canvas, ctx, groundPattern = null;
 const G = {
   money: 0, rescued: 0, unlockIdx: 0, kills: 0, muted: false,
-  maxBears: CONFIG.bear.max, bossOn: false, fire: false, up: {}, paused: false,
+  maxBears: CONFIG.bear.max, bossOn: false, fire: false, barricade: false, up: {}, paused: false,
   player: null, bears: [], drops: [], grills: [], counters: [], customers: [], helpers: [],
-  flyers: [], texts: [], parts: [], snow: [], steps: [], fx: [],
+  flyers: [], texts: [], parts: [], snow: [], steps: [], fx: [], arrows: [], flash: 0,
   pad: null, spawnT: 0, bearT: 0, shake: 0, time: 0,
   cam: { x: 0, y: 0, scale: 1 },
   joy: null, keys: {},
@@ -117,9 +120,13 @@ function makeCounter(p) {
     servePad: { x: p.x, y: p.y - 62 }, cashPos: { x: p.x - 78, y: p.y + 48 },
   };
 }
+// type: 'sword'（剣士）/ 'archer'（弓使い）/ 'carrier'（運び係）
 function makeHelper(type) {
-  const s = type === 'hunter' ? { x: 330, y: 640 } : { x: 330, y: 930 };
-  return { type, x: s.x, y: s.y, stack: [], atkT: 0, face: 1, t: 0, walk: 0, pop: 1, attackT: 0 };
+  const H = CONFIG.helper;
+  const n = G.helpers.filter(h => h.type === type).length;   // 何人目か（見た目の色違い・立ち位置に使う）
+  const s = type === 'sword' ? { x: 290 + n * 40, y: 650 } : type === 'archer' ? H.archer.post : { x: 330, y: 930 };
+  const hp = (H[type] && H[type].hp) || 0;
+  return { type, n, x: s.x, y: s.y, idleT: 0, stack: [], atkT: 0, face: 1, t: 0, walk: 0, pop: 1, attackT: 0, hp, maxHp: hp, downT: 0, hurtT: 0 };
 }
 
 // 解放したときの効果（ロード時にも順番に当て直す）
@@ -141,7 +148,16 @@ function applyUnlock(id, fromSave) {
   switch (id) {
     case 'moreBears': G.maxBears = Math.min(8, G.maxBears + 1); break;
     case 'grill2': made = makeGrill(CONFIG.grills[1]); G.grills.push(made); break;
-    case 'hunter': made = makeHelper('hunter'); G.helpers.push(made); break;
+    case 'hunter':   // 斧の助っ人を2人（id はセーブ互換のため hunter のまま）
+      made = makeHelper('sword'); G.helpers.push(made);
+      G.helpers.push(makeHelper('sword'));
+      if (!fromSave) G.helpers[G.helpers.length - 1].pop = 0;
+      break;
+    case 'moreAxe':
+      if (G.helpers.filter(h => h.type === 'sword').length < CONFIG.helper.sword.max) { made = makeHelper('sword'); G.helpers.push(made); }
+      break;
+    case 'barricade': G.barricade = true; if (!fromSave) G.fencePop = 0; break;
+    case 'archer': made = makeHelper('archer'); G.helpers.push(made); break;
     case 'carrier': made = makeHelper('carrier'); G.helpers.push(made); break;
     case 'counter2': made = makeCounter(CONFIG.counters[1]); G.counters.push(made); break;
     case 'fire': G.fire = true; G.firePos = { x: u.x, y: u.y }; break;
@@ -163,8 +179,17 @@ const upCost = id => { const u = upDef(id); return Math.round(u.cost[0] * Math.p
 const upMaxed = id => upLv(id) >= upDef(id).max;
 // 背中の容量・攻撃力をプレイヤーに反映
 function applyUpgrades() {
-  G.player.cap = stat('cap');
-  G.player.damage = stat('damage');
+  const P = G.player;
+  P.cap = stat('cap');
+  P.damage = stat('damage');
+  P.maxHp = stat('hp');
+  P.hp = P.hp == null ? P.maxHp : Math.min(P.maxHp, P.hp);
+}
+// 武器レベルに合った斧 [必要Lv, アイコン名, 名前]
+function weaponLook() {
+  let look = CONFIG.weaponLooks[0];
+  CONFIG.weaponLooks.forEach(w => { if (upLv('damage') + 1 >= w[0]) look = w; });
+  return look;
 }
 const canAffordAnyUpgrade = () => CONFIG.upgrades.some(u => !upMaxed(u.id) && G.money >= upCost(u.id));
 
@@ -173,6 +198,7 @@ function buyUpgrade(id) {
   G.money -= upCost(id);
   G.up[id] = upLv(id) + 1;
   applyUpgrades();
+  if (id === 'hp') G.player.hp = G.player.maxHp;   // 体力を上げたら全回復
   Sound.sfx.unlock();
   floatText(G.player.x, G.player.y - 110, upDef(id).label + ' UP!', '#ffd23f', 24);
   sparks(G.player.x, G.player.y - 50, 20, ['#ffd23f', '#fff', '#7fe0ff']);
@@ -194,8 +220,10 @@ function renderUpgrades() {
     const row = document.createElement('div');
     row.className = 'up-row';
     const next = maxed ? '' : ` → <b>${fmtStat(u, u.base + u.step * (lv + 1))}</b>`;
-    row.innerHTML = `<img src="${IMG(u.icon)}" alt="">
-      <div class="up-info"><div class="up-name">${u.label}<span>Lv ${lv + 1}${maxed ? ' (MAX)' : ''}</span></div>
+    const icon = u.id === 'damage' ? weaponLook()[1] : u.icon;
+    const label = u.id === 'damage' ? `武器：${weaponLook()[2]}` : u.label;
+    row.innerHTML = `<img src="${IMG(icon)}" alt="">
+      <div class="up-info"><div class="up-name">${label}<span>Lv ${lv + 1}${maxed ? ' (MAX)' : ''}</span></div>
       <div class="up-val">${fmtStat(u, stat(u.id))}${next}</div></div>`;
     const btn = document.createElement('button');
     btn.className = 'up-buy';
@@ -224,8 +252,8 @@ function enterVillage(id) {
   G.v = villageById(id);
   G.vs = SAVE.villages[id] = SAVE.villages[id] || { unlockIdx: 0, rescued: 0, kills: 0, done: false };
   Object.assign(G, {
-    bears: [], drops: [], customers: [], helpers: [], flyers: [], texts: [], parts: [], steps: [], fx: [],
-    fire: false, bossOn: !!G.v.boss, maxBears: CONFIG.bear.max + G.v.extraBears, spawnT: 0, bearT: 0, moveTo: null,
+    bears: [], drops: [], customers: [], helpers: [], flyers: [], texts: [], parts: [], steps: [], fx: [], arrows: [],
+    fire: false, barricade: false, bossOn: !!G.v.boss, maxBears: CONFIG.bear.max + G.v.extraBears, spawnT: 0, bearT: 0, moveTo: null,
   });
   G.grills = [makeGrill(CONFIG.grills[0])];
   G.counters = [makeCounter(CONFIG.counters[0])];
@@ -434,27 +462,78 @@ function hitBear(b, dmg, from) {
   }
 }
 
+// 白クマが狙う相手：倒れていない主人公・剣士・弓使い
+function bearTargets() {
+  const list = G.player.downT > 0 ? [] : [G.player];
+  G.helpers.forEach(h => { if (h.type === 'sword' && !h.downT) list.push(h); });   // 弓使いは見張り台の上なので安全
+  return list;
+}
+
+// 白クマ：うろうろ → 近づくと追いかける → 「ため」（足元に赤い円）→ ひっかき → 少し休む
 function updateBears(dt) {
-  const a = CONFIG.hunt;
+  const a = CONFIG.hunt, C = CONFIG.combat;
   G.bears.forEach(b => {
     b.pop = Math.min(1, b.pop + dt * 3);
     b.hitT = Math.max(0, b.hitT - dt);
+    b.cd = Math.max(0, (b.cd || 0) - dt);
     if (b.state === 'dead') { b.deadT -= dt; return; }
-    const near = dist(b, G.player) < 150;
-    b.state = near ? 'stand' : 'wander';
-    if (near) { b.face = G.player.x > b.x ? 1 : -1; return; }
-    b.t -= dt;
-    if (b.t <= 0 || Math.hypot(b.tx - b.x, b.ty - b.y) < 8) {
-      b.tx = rand(a.x + 40, a.x + a.w - 40);
-      b.ty = rand(a.y + 40, a.y + a.h - 40);
-      b.t = rand(2, 5);
+    const reach = b.boss ? C.boss.reach : C.reach;
+    if (b.state === 'windup') {
+      b.wt -= dt;
+      if (b.target) b.face = b.target.x > b.x ? 1 : -1;
+      if (b.wt <= 0) {
+        // 攻撃！ 赤い円の中にいたらダメージ（ためている間に逃げればよけられる）
+        b.state = 'strike';
+        b.st = 0.3;
+        const dmg = Math.round(C.damage * G.v.bearHp * (b.boss ? C.boss.damageMul : 1));
+        Sound.sfx.claw();
+        fxAt('ui/slash', b.x + b.face * 30, b.y - 40, b.boss ? 150 : 90, b.face > 0 ? 0.6 : Math.PI - 0.6);
+        bearTargets().forEach(t => { if (Math.hypot(t.x - b.x, (t.y - b.y) / 0.55) < reach + 6) damageUnit(t, dmg, b); });
+        if (b.boss) G.shake = Math.max(G.shake, 10);
+      }
+      return;
     }
-    const sp = CONFIG.bear.speed * (b.boss ? 0.8 : 1);
-    const d = Math.hypot(b.tx - b.x, b.ty - b.y) || 1;
-    b.x += (b.tx - b.x) / d * sp * dt;
-    b.y += (b.ty - b.y) / d * sp * dt;
-    b.face = b.tx > b.x ? 1 : -1;
-    b.walk += dt * 6;
+    if (b.state === 'strike') {
+      b.st -= dt;
+      if (b.st <= 0) { b.state = 'wander'; b.cd = C.cooldown; }
+      return;
+    }
+    // いちばん近い相手を追いかける
+    let tgt = null, best = C.aggro;
+    bearTargets().forEach(t => { const d = dist(t, b); if (d < best) { best = d; tgt = t; } });
+    if (tgt) {
+      b.state = 'chase';
+      b.face = tgt.x > b.x ? 1 : -1;
+      if (best > reach * 0.7) {
+        const sp = C.chaseSpeed * (b.boss ? 0.75 : 1);
+        b.x += (tgt.x - b.x) / best * sp * dt;
+        b.y += (tgt.y - b.y) / best * sp * dt;
+        b.walk += dt * 10;
+      } else b.walk += dt * 3;
+      if (best < reach && b.cd <= 0) {
+        b.state = 'windup';
+        b.wt = b.wtMax = b.boss ? C.boss.windup : C.windup;
+        b.target = tgt;
+        Sound.sfx.growl();
+      }
+    } else {
+      b.state = 'wander';
+      b.t -= dt;
+      if (b.t <= 0 || Math.hypot(b.tx - b.x, b.ty - b.y) < 8) {
+        b.tx = rand(a.x + 40, a.x + a.w - 40);
+        b.ty = rand(a.y + 40, a.y + a.h - 40);
+        b.t = rand(2, 5);
+      }
+      const sp = CONFIG.bear.speed * (b.boss ? 0.8 : 1);
+      const d = Math.hypot(b.tx - b.x, b.ty - b.y) || 1;
+      b.x += (b.tx - b.x) / d * sp * dt;
+      b.y += (b.ty - b.y) / d * sp * dt;
+      b.face = b.tx > b.x ? 1 : -1;
+      b.walk += dt * 6;
+    }
+    // バリケードがあれば白クマは柵を越えられない。無いと追いかけてキャンプまで入ってくる
+    b.x = clamp(b.x, a.x + 20, a.x + a.w - 20);
+    b.y = clamp(b.y, a.y + 20, a.y + a.h + (G.barricade ? 5 : 280));
   });
   G.bears = G.bears.filter(b => b.state !== 'dead' || b.deadT > 0);
   const alive = G.bears.filter(b => !b.boss).length;
@@ -462,6 +541,45 @@ function updateBears(dt) {
     G.bearT -= dt;
     if (G.bearT <= 0) { spawnBear(false); G.bearT = CONFIG.bear.respawnSec; }
   }
+}
+
+// 主人公・助っ人がダメージを受ける
+function damageUnit(u, dmg, from) {
+  if (u.downT > 0 || u.invT > 0) return;
+  u.hp -= dmg;
+  u.hurtT = 0.3;
+  const ang = Math.atan2(u.y - from.y, u.x - from.x);
+  u.x += Math.cos(ang) * 20;
+  u.y += Math.sin(ang) * 14;
+  floatText(u.x, u.y - 100, '-' + dmg, '#ff5a5a', 26);
+  sparks(u.x, u.y - 40, 10, ['#ff5a5a', '#fff', '#ffb3b3']);
+  if (u === G.player) {
+    u.calmT = CONFIG.combat.regenDelay;
+    G.flash = 0.35;
+    G.shake = Math.max(G.shake, 8);
+    Sound.sfx.hurt();
+    if (u.hp <= 0) playerDown();
+  } else if (u.hp <= 0) {
+    // 助っ人はやられすぎると倒れる（しばらくすると起き上がる）
+    u.hp = 0;
+    u.downT = CONFIG.helper.downSec;
+    u.stack.forEach(() => dropMeat(u.x, u.y - 20));
+    u.stack = [];
+    floatText(u.x, u.y - 110, 'ダウン…', '#ffb3b3', 22);
+    Sound.sfx.bearDown();
+  }
+}
+
+// 主人公が倒れた：背負っていた肉を落として、少ししてキャンプで起き上がる
+function playerDown() {
+  const P = G.player;
+  P.hp = 0;
+  P.downT = CONFIG.combat.downSec;
+  P.stack.forEach(() => dropMeat(P.x, P.y - 20));
+  P.stack = [];
+  G.moveTo = null;
+  Sound.sfx.bearDown();
+  floatText(P.x, P.y - 120, 'たおれた…', '#ff5a5a', 30);
 }
 
 // ============================================================
@@ -490,8 +608,8 @@ function updateDrops(dt) {
       if (m.age > CONFIG.dropLife) { m.state = 'done'; return; }   // 拾われない肉は消える
       if (m.t > 0) return;
       // 近くにいる人（プレイヤー・ハンター）が拾う
-      const takers = [{ o: G.player, cap: G.player.cap, r: CONFIG.player.pickupRange }]
-        .concat(G.helpers.filter(h => h.type === 'hunter').map(h => ({ o: h, cap: CONFIG.helper.hunter.cap, r: 50 })));
+      const takers = (G.player.downT > 0 ? [] : [{ o: G.player, cap: G.player.cap, r: CONFIG.player.pickupRange }])
+        .concat(G.helpers.filter(h => h.type === 'sword' && !h.downT).map(h => ({ o: h, cap: CONFIG.helper.sword.cap, r: CONFIG.helper.sword.pickup })));
       for (const tk of takers) {
         const reserved = G.drops.filter(d => d.state === 'fly' && d.holder === tk.o).length;
         if (dist(m, tk.o) < tk.r && tk.o.stack.length + reserved < tk.cap && (!tk.o.stack.length || tk.o.stack[0] === 'raw')) {
@@ -526,6 +644,25 @@ function fly(name, from, to, h = 26, dur = 0.28, onDone) {
 // ============================================================
 function updatePlayer(dt) {
   const P = G.player;
+  P.hurtT = Math.max(0, (P.hurtT || 0) - dt);
+  P.invT = Math.max(0, (P.invT || 0) - dt);
+  if (P.downT > 0) {
+    P.downT -= dt;
+    P.vx = P.vy = 0;
+    if (P.downT <= 0) {
+      // キャンプで起き上がる（少しの間は無敵）
+      P.downT = 0;
+      P.x = CONFIG.playerStart.x;
+      P.y = CONFIG.playerStart.y + 90;
+      P.hp = P.maxHp;
+      P.invT = 1.5;
+      floatText(P.x, P.y - 110, '回復！', '#7fe0ff', 24);
+    }
+    return;
+  }
+  // 自然回復：攻撃を受けてから少し経つと回復していく
+  if (P.calmT > 0) P.calmT -= dt;
+  else P.hp = Math.min(P.maxHp, P.hp + stat('regen') * dt);
   const { dx, dy, mag } = inputDir();
   const sp = stat('speed') * mag;
   P.vx = dx * sp; P.vy = dy * sp;
@@ -668,10 +805,11 @@ function updateCustomers(dt) {
   const counter = G.counters.slice().sort((a, b) => a.queue.length - b.queue.length)[0];
   if (G.spawnT <= 0 && counter.queue.length < C.maxQueue) {
     G.spawnT = rand(...C.spawnSec);
-    const kinds = ['villager_m', 'villager_f', 'villager_child'];
+    // 村人の見た目：画像が届いている種類からランダム
+    const kinds = ['villager_m', 'villager_f', 'villager_child'].concat(['villager_old_m', 'villager_old_f', 'villager_girl', 'villager_fisher', 'villager_mother'].filter(k => images[k]));
     const cu = {
       x: counter.x + rand(-30, 30), y: CONFIG.world.h + 40, want: randInt(...G.v.want), got: 0,
-      kind: kinds[randInt(0, 2)], state: 'queue', counter, walk: 0, face: 1, pop: 1,
+      kind: kinds[randInt(0, kinds.length - 1)], state: 'queue', counter, walk: 0, face: 1, pop: 1,
     };
     counter.queue.push(cu);
     G.customers.push(cu);
@@ -700,7 +838,7 @@ function updateCustomers(dt) {
           Sound.sfx.happy();
           floatText(front.x, front.y - 90, 'ありがとう！', '#fff', 20);
           front.state = 'leave';
-          front.kind = 'villager_happy';
+          front.kind = images[front.kind + '_happy'] ? front.kind + '_happy' : 'villager_happy';
           front.exit = { x: Math.random() < 0.5 ? -60 : CONFIG.world.w + 60, y: rand(1150, 1350) };
           c.queue.shift();
           G.rescued++;
@@ -746,24 +884,54 @@ function updateHelpers(dt) {
     h.pop = Math.min(1, h.pop + dt * 2.5);
     h.atkT -= dt;
     h.attackT = Math.max(0, h.attackT - dt);
-    if (h.type === 'hunter') {
-      const H = CONFIG.helper.hunter;
+    h.hurtT = Math.max(0, (h.hurtT || 0) - dt);
+    if (h.downT > 0) {
+      h.downT -= dt;
+      if (h.downT <= 0) { h.downT = 0; h.hp = h.maxHp; floatText(h.x, h.y - 100, '復活！', '#7fe0ff', 20); }
+      return;
+    }
+    if (h.maxHp) h.hp = Math.min(h.maxHp, h.hp + 3 * dt);
+    if (h.type === 'sword') {
+      // 斧の助っ人：白クマを囲んで何度も斬る → 落ちた肉をまとめて拾う → 背中がいっぱいになったらグリルへ
+      const H = CONFIG.helper.sword;
       const bears = G.bears.filter(b => b.state !== 'dead');
-      const loose = G.drops.filter(m => m.state === 'ground' && m.y < 640);
-      if (h.stack.length >= H.cap || (h.stack.length && !bears.length && !loose.length)) {
+      const loose = G.drops.filter(m => m.state === 'ground' && m.y < 700);
+      h.idleT = !bears.length && !loose.length ? h.idleT + dt : 0;
+      if (h.stack.length >= H.cap || (h.stack.length && h.idleT > 2.5)) {
         const g = G.grills.slice().sort((a, b) => dist(h, a.inPad) - dist(h, b.inPad))[0];
-        if (moveTo(h, g.inPad, H.speed, dt) || dist(h, g.inPad) < 40) interactStations(h, dt, 0.12, H.cap, false);
-      } else if (loose.length) {
+        if (moveTo(h, g.inPad, H.speed, dt) || dist(h, g.inPad) < 40) interactStations(h, dt, 0.08, H.cap, false);
+      } else if (loose.length && (!bears.length || h.stack.length === 0 && dist(h, loose[0]) < 120)) {
         moveTo(h, loose.sort((a, b) => dist(h, a) - dist(h, b))[0], H.speed, dt);
       } else if (bears.length) {
+        // いちばん近い白クマ。みんなで同じ場所に重ならないよう、まわりを囲む（近くの肉は拾う範囲が広いので戦いながら集まる）
         const b = bears.sort((a, c) => dist(h, a) - dist(h, c))[0];
-        if (dist(h, b) > 70) moveTo(h, b, H.speed, dt);
-        else if (h.atkT <= 0) {
-          h.atkT = H.attackCd;
-          h.attackT = 0.2;
+        const ang = h.n * 2.4 + 0.6;
+        const spot = { x: b.x + Math.cos(ang) * 60, y: b.y + Math.sin(ang) * 30 };
+        if (dist(h, b) > H.reach) moveTo(h, spot, H.speed, dt);
+        else {
           h.face = b.x > h.x ? 1 : -1;
-          hitBear(b, H.damage, h);
+          if (h.atkT <= 0) {
+            h.atkT = H.attackCd * rand(0.9, 1.1);
+            h.attackT = 0.2;
+            fxAt('ui/slash', b.x - h.face * 10, b.y - 45, 60, h.face > 0 ? -0.3 : 0.3 + Math.PI);
+            hitBear(b, H.damage, h);
+          }
         }
+      } else {
+        moveTo(h, { x: 200 + h.n * 55, y: 300 }, H.speed * 0.5, dt);   // 狩り場で次の白クマを待つ
+      }
+    } else if (h.type === 'archer') {
+      // 弓使い：柵のそばから動かず、届く白クマに矢を射る
+      const A = CONFIG.helper.archer;
+      h.x = A.post.x; h.y = A.post.y;
+      let tgt = null, best = A.range;
+      G.bears.forEach(b => { if (b.state !== 'dead' && dist(b, h) < best) { best = dist(b, h); tgt = b; } });
+      if (tgt) h.face = tgt.x > h.x ? 1 : -1;
+      if (tgt && h.atkT <= 0) {
+        h.atkT = A.attackCd;
+        h.attackT = 0.3;
+        G.arrows.push({ x: h.x + h.face * 14, y: h.y - 150, target: tgt, from: h, ang: 0 });
+        Sound.sfx.arrow();
       }
     } else {
       const K = CONFIG.helper.carrier;
@@ -780,6 +948,19 @@ function updateHelpers(dt) {
       }
     }
   });
+  // 飛んでいる矢
+  G.arrows.forEach(ar => {
+    const t = ar.target;
+    if (t.state === 'dead') { ar.done = true; return; }
+    const tx = t.x, ty = t.y - 40;
+    const d = Math.hypot(tx - ar.x, ty - ar.y);
+    const step = 600 * dt;
+    ar.ang = Math.atan2(ty - ar.y, tx - ar.x);
+    if (d < step + 8) { ar.done = true; hitBear(t, CONFIG.helper.archer.damage, ar.from); return; }
+    ar.x += (tx - ar.x) / d * step;
+    ar.y += (ty - ar.y) / d * step;
+  });
+  G.arrows = G.arrows.filter(ar => !ar.done);
 }
 
 // ============================================================
@@ -810,6 +991,7 @@ function updateFx(dt) {
   G.coinFly = G.coinFly.filter(c => c.t < 0.6);
   G.snow.forEach(s => { s.y += s.v * dt / 800; s.x += Math.sin(G.time + s.v) * dt * 0.01; if (s.y > 1) { s.y = 0; s.x = Math.random(); } });
   G.shake = Math.max(0, G.shake - dt * 40);
+  G.flash = Math.max(0, G.flash - dt);
   if (G.pad) G.pad.pulse += dt;
 }
 G.coinFly = [];
@@ -822,6 +1004,7 @@ function fxAt(name, x, y, size, rot = 0) {
 // 狩り場の柵：木の杭とロープ。真ん中は門（通り道）
 function drawFence(a) {
   const y = a.y + a.h + 20;
+  if (G.barricade) { drawBarricade(a, y); return; }
   const gate = [a.x + a.w / 2 - 60, a.x + a.w / 2 + 60];
   const posts = [];
   for (let x = a.x; x <= a.x + a.w; x += 46) if (x < gate[0] || x > gate[1]) posts.push(x);
@@ -847,6 +1030,39 @@ function drawFence(a) {
     ctx.fillStyle = '#fff';
     ctx.beginPath(); ctx.ellipse(x, y - (big ? 44 : 30), big ? 8 : 6, 4, 0, 0, Math.PI * 2); ctx.fill();
   });
+}
+
+// バリケード：とがった丸太を並べた壁（白クマはここを越えられない）
+function drawBarricade(a, y) {
+  G.fencePop = Math.min(1, (G.fencePop == null ? 1 : G.fencePop) + 1 / 40);
+  const k = G.fencePop;
+  const gate = [a.x + a.w / 2 - 60, a.x + a.w / 2 + 60];
+  if (images.barricade) {
+    const w = 96;
+    for (let x = a.x - 10; x < a.x + a.w + 10; x += w - 8) {
+      if (x + w / 2 > gate[0] && x + w / 2 < gate[1]) continue;
+      drawSprite('barricade', x + w / 2, y + 8, 58 * k);
+    }
+    drawSprite(pick('gate_open', 'barricade'), (gate[0] + gate[1]) / 2, y + 8, 64 * k);
+    return;
+  }
+  for (let x = a.x; x <= a.x + a.w; x += 16) {
+    if (x > gate[0] && x < gate[1]) continue;
+    const hgt = (40 + (x * 7 % 11)) * k;
+    ctx.fillStyle = 'rgba(40,70,110,.18)';
+    ctx.beginPath(); ctx.ellipse(x, y + 2, 9, 4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = x % 32 ? '#8a5a2b' : '#7a4a22';
+    ctx.beginPath();
+    ctx.moveTo(x - 7, y); ctx.lineTo(x - 7, y - hgt); ctx.lineTo(x, y - hgt - 12); ctx.lineTo(x + 7, y - hgt); ctx.lineTo(x + 7, y);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.ellipse(x, y - hgt + 2, 6, 3, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.strokeStyle = '#5e3a1a'; ctx.lineWidth = 6;
+  [[a.x, gate[0]], [gate[1], a.x + a.w]].forEach(([x0, x1]) => {
+    ctx.beginPath(); ctx.moveTo(x0, y - 14 * k); ctx.lineTo(x1, y - 14 * k); ctx.stroke();
+  });
+  [gate[0], gate[1]].forEach(x => { ctx.fillStyle = '#6b4020'; roundRect(x - 7, y - 60 * k, 14, 60 * k, 4); ctx.fill(); });
 }
 
 // ============================================================
@@ -960,6 +1176,19 @@ function render() {
     const y = f.fy + (f.ty - f.fy) * k - Math.sin(k * Math.PI) * 50;
     drawSprite(f.name, x, y + f.h / 2, f.h);
   });
+  // 弓使いの矢
+  G.arrows.forEach(ar => {
+    ctx.save();
+    ctx.translate(ar.x, ar.y);
+    ctx.rotate(ar.ang);
+    ctx.strokeStyle = '#6b4423'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(-18, 0); ctx.lineTo(8, 0); ctx.stroke();
+    ctx.fillStyle = '#e8eef5';
+    ctx.beginPath(); ctx.moveTo(15, 0); ctx.lineTo(6, -4.5); ctx.lineTo(6, 4.5); ctx.fill();
+    ctx.fillStyle = '#ff6b6b';
+    ctx.fillRect(-19, -3, 6, 6);
+    ctx.restore();
+  });
   // 画像エフェクト
   G.fx.forEach(f => {
     const im = images[f.name];
@@ -1011,6 +1240,22 @@ function render() {
   const W = canvas.width / G.dpr, H = canvas.height / G.dpr;
   ctx.fillStyle = 'rgba(255,255,255,.85)';
   G.snow.forEach(f => { ctx.beginPath(); ctx.arc(f.x * W, f.y * H, f.s, 0, Math.PI * 2); ctx.fill(); });
+  if (G.flash > 0) {   // 攻撃を受けたときの赤いフラッシュ
+    const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.max(W, H) * 0.7);
+    g.addColorStop(0, 'rgba(255,0,0,0)');
+    g.addColorStop(1, `rgba(255,0,0,${G.flash * 1.4})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+  // 体力が少ないときは画面のふちが赤く脈打つ
+  const P = G.player;
+  if (P.maxHp && P.hp / P.maxHp < 0.3 && !P.downT) {
+    const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.7);
+    g.addColorStop(0, 'rgba(255,0,0,0)');
+    g.addColorStop(1, `rgba(255,0,0,${0.18 + Math.sin(G.time * 6) * 0.1})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
   drawJoystick();
   drawCoinFly(W);
 }
@@ -1198,13 +1443,15 @@ function drawCustomer(cu) {
   shadow(cu.x, cu.y, 18);
   drawSprite(cu.kind, cu.x + jx, cu.y - bob, cu.kind === 'villager_child' ? 56 : 70, { flip: cu.face < 0 });
   // 吹き出し：あと何個ほしいか
-  // 吹き出しは列の先頭2人だけ（多いとごちゃごちゃするので）
-  if (cold && cu.slot && dist(cu, cu.slot) < 30 && cu.counter.queue.indexOf(cu) < 2) {
+  // 顔が隠れないように、吹き出しは村人の横に出す（列の先頭4人まで）
+  if (cold && cu.slot && dist(cu, cu.slot) < 30 && cu.counter.queue.indexOf(cu) < 4) {
     const left = cu.want - cu.got;
-    const bx = cu.x, by = cu.y - 92;
+    const side = cu.x > CONFIG.world.w - 90 ? -1 : 1;   // 右端の列は左側に出す
+    const bx = cu.x + side * 56, by = cu.y - 34;
     ctx.fillStyle = 'rgba(255,255,255,.95)';
     roundRect(bx - 26, by - 22, 52, 28, 12); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(bx - 5, by + 6); ctx.lineTo(bx, by + 13); ctx.lineTo(bx + 5, by + 6); ctx.fill();
+    const ex = bx - side * 26;
+    ctx.beginPath(); ctx.moveTo(ex, by - 14); ctx.lineTo(ex - side * 9, by - 8); ctx.lineTo(ex, by - 2); ctx.fill();
     drawSprite('meat_cooked', bx - 10, by + 3, 22);
     ctx.font = '900 14px "Hiragino Sans",sans-serif';
     ctx.textAlign = 'left';
@@ -1216,20 +1463,65 @@ function drawCustomer(cu) {
 function drawBear(b) {
   const h = b.boss ? 140 : 84;
   const k = b.pop;
+  const C = CONFIG.combat;
+  // 攻撃の「ため」：足元の赤い円がだんだん埋まる（この中にいると攻撃を受ける）
+  if (b.state === 'windup') {
+    const reach = b.boss ? C.boss.reach : C.reach;
+    const p = 1 - b.wt / b.wtMax;
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,40,40,.14)';
+    ctx.strokeStyle = 'rgba(255,40,40,.85)';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.ellipse(b.x, b.y, reach, reach * 0.55, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,40,40,.35)';
+    ctx.beginPath(); ctx.ellipse(b.x, b.y, reach * p, reach * 0.55 * p, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
   shadow(b.x, b.y, h * 0.42);
   if (b.state === 'dead') {
     drawSprite('bear_down', b.x, b.y, h * 0.75, { alpha: clamp(b.deadT / 0.7, 0, 1), flip: b.face < 0 });
     return;
   }
-  const name = b.boss ? 'bear_boss' : (b.state === 'stand' ? 'bear_stand' : 'bear_walk');
-  const bob = b.state === 'wander' ? Math.abs(Math.sin(b.walk)) * 3 : 0;
-  drawSprite(name, b.x, b.y - bob, h * (b.state === 'stand' && !b.boss ? 1.15 : 1) * (0.4 + 0.6 * k), { flip: b.face < 0, flash: b.hitT > 0 });
+  const step = Math.sin(b.walk) > 0;
+  let name;
+  if (b.boss) name = b.state === 'windup' ? pick('bear_roar', 'bear_boss') : 'bear_boss';
+  else if (b.hitT > 0) name = pick('bear_hurt', 'bear_walk');
+  else if (b.state === 'windup') name = pick('bear_claw_up', 'bear_stand');
+  else if (b.state === 'strike') name = pick('bear_claw', 'bear_stand');
+  else if (b.state === 'chase') name = step ? pick('bear_run', 'bear_walk') : pick('bear_walk2', 'bear_walk');
+  else name = step ? 'bear_walk' : pick('bear_walk2', 'bear_walk');
+  if (b.boss && name !== 'bear_boss') name = 'bear_boss';   // ボスは専用の絵のまま
+  const bob = b.state === 'wander' || b.state === 'chase' ? Math.abs(Math.sin(b.walk)) * 3 : 0;
+  const big = b.state === 'windup' ? 1.08 + Math.sin(G.time * 30) * 0.02 : b.state === 'strike' ? 1.12 : 1;
+  const lunge = b.state === 'strike' ? b.face * 10 : 0;
+  drawSprite(name, b.x + lunge, b.y - bob, h * big * (0.4 + 0.6 * k), { flip: b.face < 0, flash: b.hitT > 0.08, tint: b.state === 'windup' && Math.sin(G.time * 24) > 0 ? 'rgba(255,60,60,.35)' : null });
   if (b.hp < b.maxHp) {
     const w = b.boss ? 90 : 56;
     ctx.fillStyle = 'rgba(0,0,0,.45)';
     roundRect(b.x - w / 2, b.y - h - 16, w, 8, 4); ctx.fill();
     ctx.fillStyle = b.boss ? '#ff4d4d' : '#ff7a7a';
     roundRect(b.x - w / 2, b.y - h - 16, w * (b.hp / b.maxHp), 8, 4); ctx.fill();
+  }
+}
+
+// 体力ゲージ（減っているときだけ出す）
+function hpBar(o, y, w = 50) {
+  if (!o.maxHp || o.hp >= o.maxHp) return;
+  const r = Math.max(0, o.hp / o.maxHp);
+  ctx.fillStyle = 'rgba(0,0,0,.5)';
+  roundRect(o.x - w / 2 - 1, y - 1, w + 2, 9, 4.5); ctx.fill();
+  ctx.fillStyle = r > 0.5 ? '#4fd46a' : r > 0.25 ? '#ffb020' : '#ff4040';
+  roundRect(o.x - w / 2, y, w * r, 7, 3.5); ctx.fill();
+}
+
+// 倒れているときに頭の上を回る星
+function dizzy(x, y) {
+  ctx.font = '14px serif';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ffd23f';
+  for (let i = 0; i < 3; i++) {
+    const a = G.time * 4 + i * 2.1;
+    ctx.fillText('★', x + Math.cos(a) * 16, y + Math.sin(a) * 5);
   }
 }
 
@@ -1251,12 +1543,21 @@ function drawStack(o, baseY) {
 
 function drawPlayer() {
   const P = G.player;
+  if (P.downT > 0) {
+    shadow(P.x, P.y, 26);
+    drawSprite(pick('hero_hurt', 'hero_idle'), P.x, P.y, 70, { rot: Math.PI / 2 * 0.9, alpha: 0.9 });
+    dizzy(P.x, P.y - 40);
+    return;
+  }
   const moving = Math.hypot(P.vx, P.vy) > 10;
   const bob = moving ? Math.abs(Math.sin(P.walk)) * 4 : Math.sin(G.time * 3) * 1;
   shadow(P.x, P.y, 22);
-  const name = P.attackT > 0 ? 'hero_attack' : (moving ? 'hero_walk' : 'hero_idle');
+  let name = P.attackT > 0 ? 'hero_attack' : (moving ? 'hero_walk' : 'hero_idle');
+  if (P.hurtT > 0) name = pick('hero_hurt', name);
   drawStack(P, P.y - 48 - bob);
-  drawSprite(name, P.x, P.y - bob, 82, { flip: P.face < 0 && name !== 'hero_idle' });
+  const blink = P.invT > 0 && Math.sin(G.time * 30) > 0 ? 0.4 : 1;
+  drawSprite(name, P.x, P.y - bob, 82, { flip: P.face < 0 && name !== 'hero_idle', flash: P.hurtT > 0.15, alpha: blink });
+  hpBar(P, P.y - 100, 56);
   if (P.stack.length >= P.cap) {
     ctx.font = '900 13px "Hiragino Sans",sans-serif';
     ctx.textAlign = 'center';
@@ -1270,16 +1571,55 @@ function drawPlayer() {
 }
 
 function drawHelper(h) {
-  const moving = true;
-  const bob = moving ? Math.abs(Math.sin(h.walk)) * 3 : 0;
+  const down = h.downT > 0;
+  const bob = down || h.type === 'archer' ? 0 : Math.abs(Math.sin(h.walk)) * 3;
   shadow(h.x, h.y, 18);
+  let name, downImg = false;
+  if (h.type === 'archer') { drawTower(h); return; }
+  if (h.type === 'sword') {
+    // モブの斧の助っ人：3色の色違い（攻撃・ダウンの絵は共通）
+    const base = pick(['mob_axe', 'mob_axe_g', 'mob_axe_r'][h.n % 3], 'mob_axe', 'swordsman', 'helper_hunter');
+    if (down) { name = pick('mob_axe_down', 'swordsman_down', 'helper_hunter'); downImg = name.endsWith('_down'); }
+    else if (h.attackT > 0 && h.n % 3 === 0) name = pick('mob_axe_attack', 'swordsman_attack', base);
+    else name = base;
+  } else name = 'helper_cook';
   ctx.save();
   ctx.translate(h.x, h.y);
   const sc = popScale(h);
   ctx.scale(sc, sc);
   ctx.translate(-h.x, -h.y);
   drawStack(h, h.y - 44 - bob);
-  drawSprite(h.type === 'hunter' ? 'helper_hunter' : 'helper_cook', h.x, h.y - bob, 72, { flip: h.face < 0, squash: h.attackT > 0 ? 0.08 : 0 });
+  drawSprite(name, h.x, h.y - bob, h.type === 'sword' ? 64 : 72, {
+    flip: h.face < 0, squash: h.attackT > 0 ? 0.08 : 0, flash: h.hurtT > 0.15,
+    rot: down && !downImg ? Math.PI / 2 * 0.9 : 0, alpha: down ? 0.85 : 1,
+  });
+  ctx.restore();
+  if (down) dizzy(h.x, h.y - 50);
+  else hpBar(h, h.y - 88, 44);
+}
+
+// 見張り台と、その上の弓使い
+function drawTower(h) {
+  const x = h.x, y = h.y, sc = popScale(h);
+  ctx.save();
+  ctx.translate(x, y); ctx.scale(sc, sc); ctx.translate(-x, -y);
+  const top = 118;   // 足場の高さ
+  if (images.watchtower) {
+    shadow(x, y, 50);
+    drawSprite('watchtower', x, y + 6, 175);
+  } else {
+    shadow(x, y, 46);
+    ctx.fillStyle = '#7a4a22';
+    [-30, 30].forEach(dx => { roundRect(x + dx - 5, y - top, 10, top, 3); ctx.fill(); });
+    ctx.strokeStyle = '#6b4020'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(x - 30, y - 20); ctx.lineTo(x + 30, y - top + 20); ctx.moveTo(x + 30, y - 20); ctx.lineTo(x - 30, y - top + 20); ctx.stroke();
+    ctx.fillStyle = '#9b6a3a';
+    roundRect(x - 44, y - top - 8, 88, 16, 4); ctx.fill();
+    ctx.fillStyle = '#fff';
+    roundRect(x - 44, y - top - 11, 88, 6, 3); ctx.fill();
+  }
+  const bob = Math.sin(G.time * 2);
+  drawSprite(pick('archer_aim', 'helper_hunter'), x, y - top + 4 + bob, 62, { flip: h.face < 0, squash: h.attackT > 0 ? 0.06 : 0 });
   ctx.restore();
 }
 
