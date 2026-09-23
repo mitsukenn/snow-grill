@@ -105,7 +105,7 @@ const G = {
   money: 0, rescued: 0, unlockIdx: 0, kills: 0, muted: false,
   maxBears: CONFIG.bear.max, bossOn: false, fire: false, barricade: false, up: {}, paused: false,
   player: null, bears: [], drops: [], grills: [], counters: [], customers: [], helpers: [],
-  flyers: [], texts: [], parts: [], snow: [], steps: [], fx: [], arrows: [], flash: 0,
+  flyers: [], texts: [], parts: [], snow: [], steps: [], fx: [], arrows: [], flash: 0, timers: [],
   pad: null, spawnT: 0, bearT: 0, shake: 0, time: 0,
   cam: { x: 0, y: 0, scale: 1 },
   joy: null, keys: {},
@@ -156,7 +156,7 @@ function applyUnlock(id, fromSave) {
     case 'moreAxe':
       if (G.helpers.filter(h => h.type === 'sword').length < CONFIG.helper.sword.max) { made = makeHelper('sword'); G.helpers.push(made); }
       break;
-    case 'barricade': G.barricade = true; if (!fromSave) G.fencePop = 0; break;
+    case 'barricade': G.barricade = true; G.fenceHp = G.fenceMax = CONFIG.raid.fenceHp; if (!fromSave) G.fencePop = 0; break;
     case 'tower':
       G.tower = { ...CONFIG.helper.archer.post, pop: fromSave ? 1 : 0 };
       if (!fromSave && !G.helpers.some(h => h.type === 'archer')) {
@@ -271,6 +271,12 @@ function enterVillage(id) {
   G.unlockIdx = G.vs.unlockIdx || 0;
   for (let i = 0; i < G.unlockIdx; i++) applyUnlock(unlockAt(i).id, true);
   G.vs.crew = G.vs.crew || [];
+  G.timers = [];
+  G.volTurn = false;
+  G.lastRaid = G.rescued;
+  G.raids = 0;
+  G.player.pendingHit = null;
+  G.fenceHp = G.fenceMax = G.barricade ? CONFIG.raid.fenceHp : 0;
   G.battle = null;
   G.banner = null;
   if (G.v.battle) setupBattle();
@@ -299,6 +305,20 @@ function enterVillage(id) {
 }
 
 // 村の目標を達成：お祝い → 会話 → 全体マップ
+// 少しあとに実行（ゲーム内時間で数えるので、一時停止中は進まない。村を移ると取り消される）
+function later(sec, fn) { G.timers.push({ t: sec, fn }); }
+// 主人公のまわりからコインがどっと出て、所持金へ飛んでいく
+function coinBurst(n) {
+  for (let i = 0; i < n; i++) later(i * 0.04, () => { G.coinFly.push({ x: G.player.x + rand(-30, 30), y: G.player.y - 60 + rand(-20, 20), t: 0 }); Sound.sfx.coin(i); });
+}
+function updateTimers(dt) {
+  const due = [];
+  G.timers.forEach(t => { t.t -= dt; if (t.t <= 0) due.push(t); });
+  if (!due.length) return;
+  G.timers = G.timers.filter(t => t.t > 0);
+  due.forEach(t => t.fn());
+}
+
 function villageClear() {
   G.vs.done = true;
   persist();
@@ -306,7 +326,16 @@ function villageClear() {
   floatText(G.player.x, G.player.y - 140, '開拓完了！', '#ffd23f', 42);
   sparks(G.player.x, G.player.y - 60, 60, ['#ffd23f', '#fff', '#7fe0ff', '#ff9ad5']);
   G.shake = 10;
-  setTimeout(() => showStory(G.v.outro, () => openMap(true)), 1600);
+  // クリアのごほうび
+  if (!G.v.battle) {
+    const bonus = Math.round(G.v.goal * CONFIG.clearBonus * G.v.priceMul);
+    G.money += bonus;
+    floatText(G.player.x, G.player.y - 190, `ごほうび +${bonus}`, '#ffd23f', 30);
+    coinBurst(16);
+    updateHud();
+  }
+  const v = G.v;
+  later(1.6, () => showStory(v.outro, () => openMap(true)));
 }
 
 function nextPad() {
@@ -346,7 +375,7 @@ function updateTerritory(instant) {
     G.boundsFrom = { ...G.bounds };
     G.boundsT = 0;
     // ガコン！と広がる
-    setTimeout(() => {
+    later(0.35, () => {
       G.shake = Math.max(G.shake, 10);
       Sound.sfx.bearDown();
       floatText(G.player.x, G.player.y - 140, 'エリアが広がった！', '#7fe0ff', 28);
@@ -574,7 +603,7 @@ function hitBear(b, dmg, from) {
     fxAt('ui/sparkle', b.x, b.y - 60, b.boss ? 140 : 90);
     G.shake = Math.max(G.shake, b.boss ? 14 : 6);
     if (G.bossOn && !b.boss && G.kills % CONFIG.bossBear.everyKills === 0 && !G.bears.some(x => x.boss && x.state !== 'dead')) {
-      setTimeout(() => spawnBear(true), 900);
+      later(0.9, () => spawnBear(true));
     }
   }
 }
@@ -644,7 +673,18 @@ function updateBears(dt) {
       // 攻めてくる白クマ：バリケードへまっすぐ。こわれていたらキャンプの中へ
       b.state = 'chase';
       const up = fenceUp();
-      const goal = up ? { x: clamp(b.x, 60, CONFIG.world.w - 60), y: fenceY() - 12 } : { x: 330, y: 900 };
+      const loot = G.grills.filter(g => g.raw + g.cooked > 0).sort((p, q) => dist(b, p) - dist(b, q))[0];
+      const goal = up ? { x: clamp(b.x, 60, CONFIG.world.w - 60), y: fenceY() - 12 } : loot ? { x: loot.x + 40, y: loot.y + 30 } : { x: 330, y: 900 };
+      if (!up && loot && dist(b, goal) < 30 && b.cd <= 0) {
+        // グリルの肉を奪う！
+        const n = Math.min(4, loot.raw + loot.cooked);
+        const fromCooked = Math.min(loot.cooked, n);
+        loot.cooked -= fromCooked;
+        loot.raw -= n - fromCooked;
+        b.cd = 2.5;
+        floatText(loot.x, loot.y - 110, `肉を${n}個とられた！`, '#ff5a5a', 22);
+        Sound.sfx.growl();
+      }
       const d = dist(goal, b);
       if (d > 8) {
         b.x += (goal.x - b.x) / d * C.chaseSpeed * dt;
@@ -849,7 +889,7 @@ function updatePlayer(dt) {
     if (c.cash > 0 && dist(P, c.cashPos) < 60) {
       const n = Math.min(12, Math.ceil(c.cash / 5));
       for (let i = 0; i < n; i++) {
-        setTimeout(() => { G.coinFly.push({ x: c.cashPos.x + rand(-15, 15), y: c.cashPos.y - 10, t: 0 }); Sound.sfx.coin(i); }, i * 30);
+        later(i * 0.03, () => { G.coinFly.push({ x: c.cashPos.x + rand(-15, 15), y: c.cashPos.y - 10, t: 0 }); Sound.sfx.coin(i); });
       }
       G.money += c.cash;
       floatText(c.cashPos.x, c.cashPos.y - 50, '+' + fmt(c.cash), '#ffd23f', 26);
@@ -967,8 +1007,8 @@ function updateCustomers(dt) {
   if (G.spawnT <= 0 && counter.queue.length < C.maxQueue) {
     G.spawnT = 0.25;
     // 村人の見た目：画像が届いている種類からランダム
-    const kinds = CONFIG.villagers.filter(k => images[k]);
-    if (!kinds.length) kinds.push('villager_m');
+    let kinds = CONFIG.villagers.filter(k => images[k] && k !== 'villager_child');
+    if (!kinds.length || Math.random() < CONFIG.childRate) kinds = ['villager_child'];
     const cu = {
       x: counter.x + rand(-30, 30), y: CONFIG.world.h + 40, want: randInt(...G.v.want), got: 0,
       kind: kinds[randInt(0, kinds.length - 1)], state: 'queue', counter, walk: 0, face: 1, pop: 1,
@@ -1006,6 +1046,14 @@ function updateCustomers(dt) {
           front.exit = { x: Math.random() < 0.5 ? -60 : CONFIG.world.w + 60, y: rand(1150, 1350) };
           c.queue.shift();
           G.rescued++;
+          const M = CONFIG.milestone;
+          if (G.rescued % M.every === 0) {
+            const bonus = Math.round(M.bonus * G.v.priceMul);
+            c.cash += bonus;
+            floatText(c.cashPos.x, c.cashPos.y - 90, `${G.rescued}人達成！ +${bonus}`, '#ffd23f', 24);
+            Sound.sfx.unlock();
+          }
+          checkRaid();
           maybeVolunteer(front);
           updateHud();
           if (!G.vs.done && !G.v.battle && G.rescued >= G.v.goal) villageClear();
@@ -1372,19 +1420,23 @@ function drawBarricade(a, y) {
 //  次にやること（ガイドの矢印）
 // ============================================================
 // ガイドの文の先頭の絵文字 → アイコン画像
-const GUIDE_ICONS = { '⚔️': 'giant_idle', '💰': 'coins_pile', '🙋': 'villager_happy', '🍖': 'meat_cooked', '🔥': 'grill_on', '🐻‍❄️': 'bear_walk' };
+const GUIDE_ICONS = { '🔨': 'barricade', '⚔️': 'giant_idle', '💰': 'coins_pile', '🙋': 'villager_happy', '🍖': 'meat_cooked', '🔥': 'grill_on', '🐻‍❄️': 'bear_walk' };
 
 function currentGoal() {
   const P = G.player;
   const tutorial = G.unlockIdx < 2;
   const pad = G.pad;
-  if (pad && G.money >= Math.min(pad.price - pad.paid, 10) && (!tutorial || G.money >= pad.price - pad.paid)) {
+  const left = pad ? pad.price - pad.paid : 0;
+  if (pad && (G.money >= left || (!tutorial && G.money >= left * 0.5))) {
     return { x: pad.x, y: pad.y, text: `💰 ${pad.label} を解放しよう` };
   }
   const cash = G.counters.find(c => c.cash > 0);
   if (cash) return { x: cash.cashPos.x, y: cash.cashPos.y, text: '💰 お金を拾おう' };
   if (G.volunteer && dist(G.volunteer, CONFIG.volunteer.spot) < 20) return { x: G.volunteer.x, y: G.volunteer.y, text: '🙋 村人が手伝いたいみたい！ 話しかけよう' };
-  if (P.stack.includes('cooked')) return { x: G.counters[0].servePad.x, y: G.counters[0].servePad.y, text: '🍖 凍えた人に肉を配ろう' };
+  if (P.stack.includes('cooked')) {
+    const c = G.counters.slice().sort((p, q) => (p.stock >= stat('counterCap')) - (q.stock >= stat('counterCap')) || dist(P, p.servePad) - dist(P, q.servePad))[0];
+    return { x: c.servePad.x, y: c.servePad.y, text: '🍖 凍えた人に肉を配ろう' };
+  }
   // 背中がいっぱい・肉が落ちていない・もうグリルの近くにいる → 置きに行く（置き終わるまで）
   const grill = G.grills.slice().sort((a, b) => dist(P, a.inPad) - dist(P, b.inPad))[0];
   if (P.stack.includes('raw') && (P.stack.length >= P.cap || !G.drops.length || dist(P, grill.inPad) < 110)) {
@@ -1392,6 +1444,10 @@ function currentGoal() {
   }
   const g = G.grills.find(x => x.cooked > 0);
   if (g && !P.stack.length) return { x: g.outPad.x, y: g.outPad.y, text: '🍖 焼けた肉を取ろう' };
+  if (G.barricade && G.fenceMax && G.fenceHp < G.fenceMax * 0.5 && G.money > 5) {
+    const r = repairSpot();
+    return { x: r.x, y: r.y, text: '🔨 バリケードを修理しよう' };
+  }
   const gi = G.battle && G.battle.giant;
   if (gi && gi.state !== 'dead' && !P.stack.length) return { x: gi.x, y: gi.y, h: 230, text: `⚔️ ${G.v.giant.name}をたおそう` };
   const b = G.bears.filter(x => x.state !== 'dead').sort((a, c) => dist(P, a) - dist(P, c))[0];
@@ -1405,10 +1461,13 @@ function currentGoal() {
 function update(dt) {
   if (G.paused) return;
   G.time += dt;
+  updateTimers(dt);
   animateTerritory(dt);
   updatePlayer(dt);
   updateBears(dt);
-  if (G.battle) updateBattle(dt);
+  if (G.battle) { updateBattle(dt); battleHud(); }
+  else if (G.banner && (G.banner.t -= dt) <= 0) G.banner = null;
+  updateRepair(dt);
   updateDrops(dt);
   updateGrills(dt);
   updateCustomers(dt);

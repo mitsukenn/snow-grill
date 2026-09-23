@@ -54,6 +54,18 @@ const CONFIG = {
     max: { sword: 4, carrier: 2, archer: 1 },   // 多すぎると楽になりすぎるので控えめに   // 役割ごとの最大人数（弓は見張り台の数）
   },
 
+  // ---- 襲撃：ふつうの村でも、ときどき白クマの群れが攻めてくる ----
+  raid: {
+    first: 10,               // 最初の襲撃は何人救ったあとか
+    every: 14,               // そのあとは何人ごと
+    base: 2,                 // 群れの数 = base + 襲撃の回数
+    fenceHp: 260,            // ふつうの村のバリケードの耐久
+    repairPerCoin: 10,       // お金1で直せる耐久
+    repairSpeed: 90,         // 1秒で直せる耐久
+  },
+  milestone: { every: 10, bonus: 15 },   // 10人救うごとのボーナス（村の priceMul 倍）
+  clearBonus: 4,             // 村クリアのボーナス = 目標人数 × これ × priceMul
+
   // ---- 決戦ステージ（白クマの群れ → 雪の巨人） ----
   battle: {
     fenceHp: 420,            // バリケードの耐久
@@ -157,7 +169,8 @@ const CONFIG = {
   // 村人の見た目の種類（画像が届いているものだけ使う）。villager_n01〜 は追加で作った村人
   // 並ぶ人は特徴の少ない「モブ」3種だけ（助っ人になると役割の服装に変わる）。
   // 個性のある村人（villager_old_m・villager_n01〜 など）は画像だけ用意してあり、今は使っていない
-  villagers: ['villager_m', 'villager_f', 'villager_child', 'mob_ym1', 'mob_ym2', 'mob_ym3', 'mob_yf1', 'mob_yf2', 'mob_om1', 'mob_om2', 'mob_of1', 'mob_of2'],
+  villagers: ['mob_ym1', 'mob_ym2', 'mob_ym3', 'mob_yf1', 'mob_yf2', 'mob_om1', 'mob_om2', 'mob_of1', 'mob_of2', 'villager_child'],
+  childRate: 0.06,           // 子どもが並ぶ割合（少なめ）
   // 村人ごとに、手伝いたいことが決まっている（おじさん・おばさん＝運ぶ、若い男性＝戦う、若い女性＝見張り、子ども＝手伝いには出ない）
   villagerRole: {
     villager_m: 'carrier', villager_f: 'carrier', villager_child: null,

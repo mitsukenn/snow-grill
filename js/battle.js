@@ -8,7 +8,7 @@
 
 const fenceY = () => CONFIG.hunt.y + CONFIG.hunt.h + 20;   // 柵の位置は狩り場を広げても変わらない
 // バリケードが立っているか（決戦ではこわされることがある）
-const fenceUp = () => G.barricade && !(G.battle && G.fenceHp <= 0);
+const fenceUp = () => G.barricade && G.fenceHp > 0;
 
 function setupBattle() {
   const B = CONFIG.battle;
@@ -75,7 +75,7 @@ function spawnGiant() {
   updateHud();
   banner(g.name + ' あらわる！', '強い攻撃は赤い円でわかる。よけながら戦おう', 3.2);
   Sound.sfx.roar();
-  setTimeout(() => Sound.sfx.roar(), 350);
+  later(0.35, () => Sound.sfx.roar());
   G.shake = 16;
 }
 
@@ -86,7 +86,7 @@ function damageFence(dmg) {
   G.fenceHitT = 0.25;
   G.shake = Math.max(G.shake, 4);
   if (G.fenceHp <= 0) {
-    banner('バリケードがこわされた！', '白クマがキャンプに入ってくる…！');
+    banner('バリケードがこわされた！', '柵の前に立つと、お金で修理できる');
     Sound.sfx.bearDown();
     sparks(360, fenceY() - 20, 30, ['#8a5a2b', '#c48a52', '#fff']);
   }
@@ -186,7 +186,7 @@ function giantDefeated(b) {
   G.bears.forEach(x => { if (x !== b && x.state !== 'dead') { x.state = 'dead'; x.deadT = 0.7; } });
   banner(g.name + 'をたおした！', '北の大地に平和が近づいた', 3);
   updateHud();
-  setTimeout(() => { if (!G.vs.done) villageClear(); }, 1400);
+  later(1.4, () => { if (!G.vs.done) villageClear(); });
 }
 
 // ---------------- 描画 ----------------
@@ -252,7 +252,9 @@ function drawRocks() {
 
 // 決戦中のバリケードの耐久ゲージ
 function drawFenceHp() {
-  if (!G.battle || !G.barricade) return;
+  if (!G.barricade || !G.fenceMax) return;
+  if (!G.battle && G.fenceHp >= G.fenceMax) return;   // ふつうの村では減ったときだけ
+  drawRepairSpot();
   const y = fenceY() + 16, w = 160, x = 360;
   const r = G.fenceHp / G.fenceMax;
   ctx.fillStyle = 'rgba(0,0,0,.45)';
@@ -303,8 +305,66 @@ function battleHud() {
     $('goal-num').textContent = Bt.won ? '撃破！' : `${G.v.giant.name}  ${Math.ceil(hp / Bt.giant.maxHp * 100)}%`;
     $('goal-bar').style.width = (Bt.won ? 100 : 100 - hp / Bt.giant.maxHp * 100) + '%';
   } else {
-    $('goal-num').textContent = `第${Bt.wave} / ${B.giantAfter}波`;
+    $('goal-num').textContent = Bt.giantNext ? '巨人が来る…！' : `第${Bt.wave}/${B.giantAfter}波・あと${Math.ceil(Math.max(0, Bt.t))}秒`;
     $('goal-bar').style.width = Math.min(100, Bt.wave / B.giantAfter * 100) + '%';
   }
   $('goal').classList.toggle('done', !!(G.vs && G.vs.done));
+}
+
+// ============================================================
+//  ふつうの村の襲撃と、バリケードの修理（決戦と共通）
+// ============================================================
+function repairSpot() { return { x: 360, y: fenceY() + 48 }; }
+
+// 柵の前に立つと、お金を払って少しずつ直る
+function updateRepair(dt) {
+  if (!G.barricade || !G.fenceMax || G.fenceHp >= G.fenceMax) return;
+  const P = G.player, R = CONFIG.raid;
+  if (P.downT > 0 || dist(P, repairSpot()) > 55 || G.money <= 0) return;
+  const was = G.fenceHp;
+  G.fenceHp = Math.min(G.fenceMax, G.fenceHp + R.repairSpeed * dt);
+  G.repairPaid = (G.repairPaid || 0) + (G.fenceHp - was) / R.repairPerCoin;
+  if (G.repairPaid >= 1) {
+    const n = Math.floor(G.repairPaid);
+    G.money = Math.max(0, G.money - n);
+    G.repairPaid -= n;
+    updateHud();
+  }
+  G.repairFx = (G.repairFx || 0) - dt;
+  if (G.repairFx <= 0) {
+    G.repairFx = 0.25;
+    Sound.sfx.drop(3);
+    sparks(repairSpot().x + rand(-60, 60), fenceY() - 20, 3, ['#c48a52', '#fff']);
+  }
+  if (was <= 0 && G.fenceHp > 0) floatText(P.x, P.y - 120, 'バリケード復活！', '#7fe0ff', 24);
+}
+
+// ふつうの村：何人か救うごとに、白クマの群れが攻めてくる
+function checkRaid() {
+  if (G.battle || G.vs.done) return;
+  const R = CONFIG.raid;
+  if (G.rescued < R.first || (G.rescued - R.first) % R.every !== 0 || G.lastRaid === G.rescued) return;
+  G.lastRaid = G.rescued;
+  G.raids = (G.raids || 0) + 1;
+  const n = R.base + G.raids;
+  for (let i = 0; i < n; i++) spawnRaider();
+  banner('白クマの群れが来た！', G.barricade ? 'バリケードを守ろう' : 'バリケードを建てると守れる');
+  Sound.sfx.roar();
+}
+
+// 修理する場所の目印（こわれかけのときだけ）
+function drawRepairSpot() {
+  if (!G.barricade || !G.fenceMax || G.fenceHp >= G.fenceMax * 0.95) return;
+  const s = repairSpot();
+  const k = 1 + Math.sin(G.time * 6) * 0.06;
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,170,40,.25)';
+  ctx.strokeStyle = '#ff9a3b';
+  ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.ellipse(s.x, s.y, 44 * k, 24 * k, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.font = '900 14px "Hiragino Sans",sans-serif';
+  ctx.textAlign = 'center';
+  ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(90,40,0,.85)';
+  ctx.strokeText('🔨 修理', s.x, s.y + 5); ctx.fillStyle = '#fff'; ctx.fillText('🔨 修理', s.x, s.y + 5);
+  ctx.restore();
 }
