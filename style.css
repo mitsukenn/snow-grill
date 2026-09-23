@@ -431,3 +431,7 @@ html, body {
 .recruit-choices button:disabled { filter: grayscale(1); opacity: .5; }
 .recruit-choices button.later { background: rgba(0, 0, 0, .06); box-shadow: none; color: #1d3a5f; justify-content: center; font-size: 13px; }
 .recruit-choices button:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 #d9a13b; }
+
+/* 地図：決戦ステージ */
+.map-node.battle img { filter: drop-shadow(0 0 6px rgba(255, 60, 60, .8)); }
+.map-node.battle .map-state { background: #d8342c; color: #fff; }

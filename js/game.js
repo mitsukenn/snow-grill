@@ -132,7 +132,7 @@ function makeHelper(type) {
 // 解放したときの効果（ロード時にも順番に当て直す）
 // i 番目の解放。リストの後は「何度でも買える強化」を順番に繰り返し、値段はだんだん上がる
 function unlockAt(i) {
-  const list = CONFIG.unlocks;
+  const list = G.v && G.v.battle ? CONFIG.unlocks.filter(u => u.id !== 'barricade' && u.id !== 'tower') : CONFIG.unlocks;
   const mul = G.v ? G.v.priceMul : 1;
   if (i < list.length) return { ...list[i], price: Math.round(list[i].price * mul) };
   const rep = CONFIG.repeatUnlocks;
@@ -168,7 +168,7 @@ function applyUnlock(id, fromSave) {
     case 'carrier': made = makeHelper('carrier'); G.helpers.push(made); break;
     case 'counter2': made = makeCounter(CONFIG.counters[1]); G.counters.push(made); break;
     case 'fire': G.fire = true; G.firePos = { x: u.x, y: u.y }; break;
-    case 'huntArea': G.maxBears += 2; G.bossOn = true; break;
+    case 'huntArea': G.maxBears += 2; G.bossOn = true; G.huntBig = true; break;
   }
   if (made && !fromSave) made.pop = 0;
 }
@@ -245,6 +245,7 @@ function renderUpgrades() {
 function openUpgrades(open) {
   G.paused = open;
   G.joy = null;
+  G.touch = null;
   G.keys = {};
   $('upgrades').classList.toggle('hidden', !open);
   if (open) { renderUpgrades(); Sound.sfx.click(); }
@@ -260,7 +261,7 @@ function enterVillage(id) {
   G.vs = SAVE.villages[id] = SAVE.villages[id] || { unlockIdx: 0, rescued: 0, kills: 0, done: false };
   Object.assign(G, {
     bears: [], drops: [], customers: [], helpers: [], flyers: [], texts: [], parts: [], steps: [], fx: [], arrows: [],
-    fire: false, barricade: false, tower: null, volunteer: null, bossOn: !!G.v.boss, maxBears: CONFIG.bear.max + G.v.extraBears, spawnT: 0, bearT: 0, moveTo: null,
+    fire: false, barricade: false, huntBig: false, bounds: null, boundsT: null, tower: null, volunteer: null, bossOn: !!G.v.boss, maxBears: CONFIG.bear.max + G.v.extraBears, spawnT: 0, bearT: 0, moveTo: null,
   });
   G.grills = [makeGrill(CONFIG.grills[0])];
   G.counters = [makeCounter(CONFIG.counters[0])];
@@ -270,6 +271,9 @@ function enterVillage(id) {
   G.unlockIdx = G.vs.unlockIdx || 0;
   for (let i = 0; i < G.unlockIdx; i++) applyUnlock(unlockAt(i).id, true);
   G.vs.crew = G.vs.crew || [];
+  G.battle = null;
+  G.banner = null;
+  if (G.v.battle) setupBattle();
   G.vs.crew.forEach(c => {
     const m = typeof c === 'string' ? { type: c } : c;
     if (m.type === 'archer' && !G.tower) return;   // 弓使いは見張り台があるときだけ
@@ -280,6 +284,7 @@ function enterVillage(id) {
   nextPad();
   for (let i = 0; i < 80; i++) updateCustomers(0.25);   // 村に着いたときから、肉を待つ人の列は満員
   for (let i = 0; i < G.maxBears; i++) spawnBear(false);
+  if (G.battle && G.vs.done) G.battle.won = true;   // 撃破ずみの決戦は、ふつうに遊べる
   // はじめての村では、すぐ目の前に白クマを置いて、いきなり戦えるように
   if (!G.unlockIdx && !G.rescued) Object.assign(G.bears[0], { x: CONFIG.firstBear.x, y: CONFIG.firstBear.y, tx: CONFIG.firstBear.x, ty: CONFIG.firstBear.y, t: 4 });
   G.snow = [];
@@ -306,6 +311,86 @@ function villageClear() {
 
 function nextPad() {
   G.pad = { ...unlockAt(G.unlockIdx), paid: 0, payT: 0, pulse: 0 };
+  updateTerritory();
+}
+
+// ============================================================
+//  領地：解放した設備と次の解放パッドのまわりまで広がる
+// ============================================================
+function territoryTarget() {
+  const T = CONFIG.territory, W = CONFIG.world;
+  if (G.v && G.v.battle) return { x0: 20, y0: 60, x1: W.w - 20, y1: W.h - 20 };   // 決戦は最初から全部
+  const r = { ...T.base };
+  const add = (x, y, m) => {
+    r.x0 = Math.min(r.x0, x - m); r.x1 = Math.max(r.x1, x + m);
+    r.y0 = Math.min(r.y0, y - m); r.y1 = Math.max(r.y1, y + m);
+  };
+  for (let i = 0; i < G.unlockIdx; i++) {
+    const u = unlockAt(i);
+    add(u.x, u.y, T.margin);
+    if (u.id === 'counter2') add(CONFIG.counters[1].x + 30, CONFIG.counters[1].y, T.margin);
+    if (u.id === 'huntArea') { add(CONFIG.hunt.x, CONFIG.hunt.y, 0); add(CONFIG.hunt.x + CONFIG.hunt.w, CONFIG.hunt.y, 0); }
+  }
+  if (G.pad) add(G.pad.x, G.pad.y, 55);
+  return { x0: Math.max(20, r.x0), y0: Math.max(60, r.y0), x1: Math.min(W.w - 20, r.x1), y1: Math.min(W.h - 20, r.y1) };
+}
+
+function updateTerritory(instant) {
+  const t = territoryTarget();
+  const big = G.huntBig || (G.v && G.v.battle);
+  G.hunt = big ? { ...CONFIG.hunt } : { ...CONFIG.territory.hunt0 };
+  if (instant || !G.bounds) { G.bounds = { ...t }; G.boundsTo = t; return; }
+  const grew = (G.bounds.x0 - t.x0) + (t.x1 - G.bounds.x1) + (G.bounds.y0 - t.y0) + (t.y1 - G.bounds.y1);
+  G.boundsTo = t;
+  if (grew > 20) {
+    G.boundsFrom = { ...G.bounds };
+    G.boundsT = 0;
+    // ガコン！と広がる
+    setTimeout(() => {
+      G.shake = Math.max(G.shake, 10);
+      Sound.sfx.bearDown();
+      floatText(G.player.x, G.player.y - 140, 'エリアが広がった！', '#7fe0ff', 28);
+    }, 350);
+  }
+}
+
+// 広がるアニメーション（ぐっとためてから一気に）
+function animateTerritory(dt) {
+  if (G.boundsT == null) return;
+  G.boundsT += dt / 0.8;
+  const k = Math.min(1, G.boundsT);
+  const e = k < 0.4 ? 0 : 1 - Math.pow(1 - (k - 0.4) / 0.6, 3);
+  ['x0', 'y0', 'x1', 'y1'].forEach(p => { G.bounds[p] = G.boundsFrom[p] + (G.boundsTo[p] - G.boundsFrom[p]) * e; });
+  if (k >= 1) G.boundsT = null;
+}
+
+// 領地の外は、雪に埋もれた未開拓の土地（少し暗く）
+function drawTerritory() {
+  const b = G.bounds, W = CONFIG.world.w, H = CONFIG.world.h;
+  const pad = 26;
+  ctx.save();
+  ctx.fillStyle = 'rgba(35,55,90,.45)';
+  ctx.beginPath();
+  ctx.rect(-200, -200, W + 400, H + 400);
+  roundRectPath(b.x0 - pad, b.y0 - pad, b.x1 - b.x0 + pad * 2, b.y1 - b.y0 + pad * 2, 40);
+  ctx.fill('evenodd');
+  // さかいめの雪の土手
+  ctx.strokeStyle = 'rgba(255,255,255,.75)';
+  ctx.lineWidth = 7;
+  ctx.setLineDash([2, 14]);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  roundRectPath(b.x0 - pad, b.y0 - pad, b.x1 - b.x0 + pad * 2, b.y1 - b.y0 + pad * 2, 40);
+  ctx.stroke();
+  ctx.restore();
+}
+function roundRectPath(x, y, w, h, r) {
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
 }
 
 function init() {
@@ -379,29 +464,20 @@ function resize() {
 // ・ドラッグ … その方向に歩き続ける（指を離すと止まる）
 // ・タップ（すぐ離す）… タップした場所まで自動で歩く
 function setupInput() {
+  // タッチした場所へ向かう。指をつけたまま動かすと、指の場所についていく
   canvas.addEventListener('pointerdown', e => {
     canvas.setPointerCapture(e.pointerId);
-    G.joy = { sx: e.clientX, sy: e.clientY, x: e.clientX, y: e.clientY, id: e.pointerId, t0: performance.now(), moved: false };
+    G.touch = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    G.moveTo = touchTarget();
     Sound.startBgm();
   });
   canvas.addEventListener('pointermove', e => {
-    if (G.joy && e.pointerId === G.joy.id) {
-      G.joy.x = e.clientX; G.joy.y = e.clientY;
-      if (Math.hypot(G.joy.x - G.joy.sx, G.joy.y - G.joy.sy) > 12) { G.joy.moved = true; G.moveTo = null; }
-    }
+    if (G.touch && e.pointerId === G.touch.id) { G.touch.x = e.clientX; G.touch.y = e.clientY; }
   });
   const end = e => {
-    if (!G.joy || e.pointerId !== G.joy.id) return;
-    const j = G.joy;
-    G.joy = null;
-    if (e.type === 'pointerup' && !j.moved && performance.now() - j.t0 < 300) {
-      const r = canvas.getBoundingClientRect();
-      G.moveTo = {
-        x: clamp(G.cam.x + (e.clientX - r.left) / G.cam.scale, 20, CONFIG.world.w - 20),
-        y: clamp(G.cam.y + (e.clientY - r.top) / G.cam.scale, 60, CONFIG.world.h - 20),
-        t: 0,
-      };
-    }
+    if (!G.touch || e.pointerId !== G.touch.id) return;
+    G.moveTo = touchTarget();   // 指をはなした場所まで歩いて止まる
+    G.touch = null;
   };
   canvas.addEventListener('pointerup', end);
   canvas.addEventListener('pointercancel', end);
@@ -409,7 +485,19 @@ function setupInput() {
   window.addEventListener('keyup', e => { G.keys[e.key.toLowerCase()] = false; });
 }
 
+// 指の下にあるワールド座標（カメラが動いても毎フレーム計算し直す）
+function touchTarget() {
+  const r = canvas.getBoundingClientRect();
+  const t = G.touch;
+  return {
+    x: G.cam.x + (t.x - r.left) / G.cam.scale,
+    y: G.cam.y + (t.y - r.top) / G.cam.scale,
+    t: 0, hold: true,
+  };
+}
+
 function inputDir() {
+  if (G.touch && !G.paused) { const t = touchTarget(); t.t = G.moveTo ? G.moveTo.t : 0; G.moveTo = t; }
   let dx = 0, dy = 0, mag = 0;
   if (G.joy) {
     dx = G.joy.x - G.joy.sx;
@@ -419,6 +507,9 @@ function inputDir() {
   }
   // タップした場所へ向かう（ドラッグやキーを使ったら取り消し）
   if (G.moveTo && !(G.joy && G.joy.moved)) {
+    const bd = G.bounds;   // 領地の外をさわったら、ふちまで行く
+    G.moveTo.x = clamp(G.moveTo.x, bd.x0, bd.x1);
+    G.moveTo.y = clamp(G.moveTo.y, bd.y0, bd.y1);
     const tdx = G.moveTo.x - G.player.x, tdy = G.moveTo.y - G.player.y;
     const len = Math.hypot(tdx, tdy);
     if (len < 8) G.moveTo = null;
@@ -435,7 +526,7 @@ function inputDir() {
 //  白クマ
 // ============================================================
 function spawnBear(boss) {
-  const a = CONFIG.hunt;
+  const a = G.hunt;
   let x, y, tries = 0;
   do {
     x = rand(a.x + 40, a.x + a.w - 40);
@@ -454,6 +545,15 @@ function hitBear(b, dmg, from) {
   if (b.state === 'dead') return;
   b.hp -= dmg;
   b.hitT = 0.16;
+  if (b.giant) {
+    // 巨人はのけぞらない
+    Sound.sfx.hit();
+    sparks(b.x + rand(-30, 30), b.y - rand(60, 160), 6, ['#fff', '#cfe8ff', '#ffe066']);
+    floatText(b.x + rand(-30, 30), b.y - 250, '-' + dmg, '#ffe066', 30);
+    if (b.hp <= 0) { b.state = 'dead'; giantDefeated(b); }
+    updateHud();
+    return;
+  }
   b.angryT = CONFIG.combat.angrySec;
   const ang = Math.atan2(b.y - from.y, b.x - from.x);
   b.x += Math.cos(ang) * 10;
@@ -488,13 +588,14 @@ function bearTargets() {
 
 // 白クマ：うろうろ → 近づくと追いかける → 「ため」（足元に赤い円）→ ひっかき → 少し休む
 function updateBears(dt) {
-  const a = CONFIG.hunt, C = CONFIG.combat;
+  const a = G.hunt, C = CONFIG.combat;
   G.bears.forEach(b => {
     b.pop = Math.min(1, b.pop + dt * 3);
     b.hitT = Math.max(0, b.hitT - dt);
     b.cd = Math.max(0, (b.cd || 0) - dt);
     if (b.state === 'dead') { b.deadT -= dt; return; }
     const reach = b.boss ? C.boss.reach : C.reach;
+    if (b.giant) { updateGiant(b, dt); return; }
     b.angryT = Math.max(0, (b.angryT || 0) - dt);
     if (b.state === 'windup') {
       b.wt -= b.hitT > 0 ? dt * 0.7 : dt;   // 攻撃を当てている間は「ため」が遅くなる（攻めれば少し安全）
@@ -507,6 +608,7 @@ function updateBears(dt) {
         Sound.sfx.claw();
         fxAt('ui/slash', b.x + b.face * 30, b.y - 40, b.boss ? 150 : 90, b.face > 0 ? 0.6 : Math.PI - 0.6);
         bearTargets().forEach(t => { if (Math.hypot(t.x - b.x, (t.y - b.y) / 0.55) < reach + 6) damageUnit(t, dmg, b); });
+        if (b.target && b.target.fence) damageFence(dmg * 1.5);   // バリケードをひっかく
         if (b.boss) G.shake = Math.max(G.shake, 10);
       }
       return;
@@ -538,6 +640,22 @@ function updateBears(dt) {
           floatText(G.player.x, G.player.y - 130, '赤い円から逃げろ！', '#ff5a5a', 26);
         }
       }
+    } else if (b.raid) {
+      // 攻めてくる白クマ：バリケードへまっすぐ。こわれていたらキャンプの中へ
+      b.state = 'chase';
+      const up = fenceUp();
+      const goal = up ? { x: clamp(b.x, 60, CONFIG.world.w - 60), y: fenceY() - 12 } : { x: 330, y: 900 };
+      const d = dist(goal, b);
+      if (d > 8) {
+        b.x += (goal.x - b.x) / d * C.chaseSpeed * dt;
+        b.y += (goal.y - b.y) / d * C.chaseSpeed * dt;
+        b.walk += dt * 10;
+        b.face = goal.x > b.x ? 1 : b.x > goal.x + 1 ? -1 : b.face;
+      } else if (up && b.cd <= 0) {
+        b.state = 'windup';
+        b.wt = b.wtMax = C.windup;
+        b.target = { fence: true, x: b.x, y: fenceY() };
+      }
     } else {
       b.state = 'wander';
       b.t -= dt;
@@ -555,10 +673,10 @@ function updateBears(dt) {
     }
     // バリケードがあれば白クマは柵を越えられない。無いと追いかけてキャンプまで入ってくる
     b.x = clamp(b.x, a.x + 20, a.x + a.w - 20);
-    b.y = clamp(b.y, a.y + 20, a.y + a.h + (G.barricade ? 5 : 280));
+    b.y = clamp(b.y, a.y + 20, a.y + a.h + (fenceUp() ? 5 : b.raid ? 420 : 280));
   });
   G.bears = G.bears.filter(b => b.state !== 'dead' || b.deadT > 0);
-  const alive = G.bears.filter(b => !b.boss).length;
+  const alive = G.bears.filter(b => !b.boss && !b.raid).length;
   if (alive < G.maxBears) {
     G.bearT -= dt;
     if (G.bearT <= 0) { spawnBear(false); G.bearT = CONFIG.bear.respawnSec; }
@@ -615,8 +733,16 @@ function dropMeat(x, y) {
   if (ground.length > CONFIG.dropMax) ground.slice(0, ground.length - CONFIG.dropMax).forEach(d => { d.state = 'done'; });
 }
 
+// 生肉と焼けた肉はいっしょに持てる（合計が cap まで）
 function canCarry(who, kind, cap) {
-  return who.stack.length < cap && (!who.stack.length || who.stack[0] === kind);
+  return who.stack.length < cap;
+}
+// 背中から指定の種類を1つ取り出す（上に積んだものから）
+function takeFromStack(who, kind) {
+  const i = who.stack.lastIndexOf(kind);
+  if (i < 0) return false;
+  who.stack.splice(i, 1);
+  return true;
 }
 
 function updateDrops(dt) {
@@ -634,7 +760,7 @@ function updateDrops(dt) {
         .concat(G.helpers.filter(h => h.type === 'sword' && !h.downT).map(h => ({ o: h, cap: CONFIG.helper.sword.cap, r: CONFIG.helper.sword.pickup })));
       for (const tk of takers) {
         const reserved = G.drops.filter(d => d.state === 'fly' && d.holder === tk.o).length;
-        if (dist(m, tk.o) < tk.r && tk.o.stack.length + reserved < tk.cap && (!tk.o.stack.length || tk.o.stack[0] === 'raw')) {
+        if (dist(m, tk.o) < tk.r && tk.o.stack.length + reserved < tk.cap) {
           m.state = 'fly'; m.holder = tk.o; break;
         }
       }
@@ -688,8 +814,9 @@ function updatePlayer(dt) {
   const { dx, dy, mag } = inputDir();
   const sp = stat('speed') * mag;
   P.vx = dx * sp; P.vy = dy * sp;
-  P.x = clamp(P.x + P.vx * dt, 20, CONFIG.world.w - 20);
-  P.y = clamp(P.y + P.vy * dt, 60, CONFIG.world.h - 20);
+  const bd = G.bounds;
+  P.x = clamp(P.x + P.vx * dt, bd.x0, bd.x1);
+  P.y = clamp(P.y + P.vy * dt, bd.y0, bd.y1);
   if (Math.abs(P.vx) > 5) P.face = P.vx > 0 ? 1 : -1;
   if (mag > 0.1) {
     P.walk += dt * 10;
@@ -703,7 +830,7 @@ function updatePlayer(dt) {
   let target = null, best = CONFIG.player.attackRange;
   G.bears.forEach(b => {
     if (b.state === 'dead') return;
-    const d = dist(b, P) - (b.boss ? 30 : 0);
+    const d = dist(b, P) - (b.giant ? 75 : b.boss ? 30 : 0);
     if (d < best) { best = d; target = b; }
   });
   if (target && P.atkT <= 0) {
@@ -780,8 +907,8 @@ function interactStations(who, dt, rate, cap, isPlayer) {
 function transferOnce(who, cap, isPlayer) {
   for (const g of G.grills) {
     // 生肉をグリルに置く
-    if (who.stack[0] === 'raw' && g.raw < stat('grillCap') && dist(who, g.inPad) < 48) {
-      who.stack.pop();
+    if (who.stack.includes('raw') && g.raw < stat('grillCap') && dist(who, g.inPad) < 48) {
+      takeFromStack(who, 'raw');
       g.raw++;
       fly('meat_raw', { x: who.x, y: who.y - 50 }, { x: g.inPad.x, y: g.inPad.y - 10 });
       if (isPlayer) Sound.sfx.drop(g.raw);
@@ -798,8 +925,8 @@ function transferOnce(who, cap, isPlayer) {
   }
   for (const c of G.counters) {
     // 焼けた肉を配給台に置く
-    if (who.stack[0] === 'cooked' && c.stock < stat('counterCap') && dist(who, c.servePad) < 48) {
-      who.stack.pop();
+    if (who.stack.includes('cooked') && c.stock < stat('counterCap') && dist(who, c.servePad) < 48) {
+      takeFromStack(who, 'cooked');
       c.stock++;
       fly('meat_cooked', { x: who.x, y: who.y - 50 }, { x: c.x, y: c.y - 40 });
       if (isPlayer) Sound.sfx.drop(c.stock);
@@ -881,7 +1008,7 @@ function updateCustomers(dt) {
           G.rescued++;
           maybeVolunteer(front);
           updateHud();
-          if (!G.vs.done && G.rescued >= G.v.goal) villageClear();
+          if (!G.vs.done && !G.v.battle && G.rescued >= G.v.goal) villageClear();
         }
       }
     }
@@ -920,13 +1047,20 @@ const BACK_LINES = ['おまたせ！ また頑張るよ！', 'ふう、元気に
 // 助っ人のひとこと（頭の上の吹き出し）
 function say(o, text, sec = 2.5) { o.say = { text, t: sec }; }
 
-const volVoice = kind => /child|girl/.test(kind) ? 'boy' : /_f|mother/.test(kind) ? 'woman' : 'man';
+// 役割ごとの申し出のことば
+const OFFER_LINES = {
+  sword: { boy: '力なら負けない！ 白クマ退治を手伝わせて！', man: '腕っぷしには自信があるんだ。白クマ退治は任せてくれ！', woman: '力仕事は得意なの。白クマ退治、手伝うわ！' },
+  carrier: { boy: 'ぼく、運ぶのは得意だよ！', man: '戦うのは苦手だが、肉を運ぶくらいならできるぞ。', woman: '焼けたお肉、みんなに配るのを手伝うわね！' },
+  archer: { boy: '弓なら得意なんだ！ 見張りは任せて！', man: '目には自信がある。見張り台から弓で守ろう。', woman: '弓なら任せて。見張り台から守ってあげる！' },
+};
+
+const volVoice = kind => /child|girl/.test(kind) ? 'boy' : /_f|mother|_yf|_of/.test(kind) ? 'woman' : 'man';
 const ROLES = [
-  { type: 'sword', icon: 'mob_axe', label: '一緒に白クマと戦って！', note: '斧で戦って、生肉をグリルへ運ぶ',
+  { type: 'sword', icon: 'mob_axe', label: 'お願い！ 一緒に戦って！', note: '斧で戦って、生肉をグリルへ運ぶ',
     reply: { boy: 'まかせて！ 斧ならつかえるよ！', man: 'おう！ 白クマなんざ怖くねえ！', woman: 'わかったわ、斧を持ってくる！' } },
-  { type: 'carrier', icon: 'helper_cook', label: '焼けた肉を運んで！', note: 'グリルの肉を配給台へ運ぶ',
+  { type: 'carrier', icon: 'helper_cook', label: 'お願い！ 焼けた肉を運んで！', note: 'グリルの肉を配給台へ運ぶ',
     reply: { boy: 'うん！ いっぱい運ぶね！', man: 'よし、運ぶのはまかせろ！', woman: 'みんなに届けるわね！' } },
-  { type: 'archer', icon: 'archer_aim', label: '見張り台で見張って！', note: '高い所から矢で白クマをうつ',
+  { type: 'archer', icon: 'archer_aim', label: 'お願い！ 見張り台を守って！', note: '高い所から矢で白クマをうつ',
     reply: { boy: '高いところ、好き！', man: '目には自信があるんだ。まかせな！', woman: '弓なら得意よ。見張りはまかせて！' } },
 ];
 
@@ -941,7 +1075,9 @@ function maybeVolunteer(cu) {
   if (G.volunteer) return;
   // 決まった人数ごとに「志願者の番」が来て、その番のあとで役割に空きのある人が申し出る
   if (G.rescued === V.first || (G.rescued - V.first) % V.every === 0) G.volTurn = true;
-  if (!G.volTurn || !ROLES.some(r => roleOpen(r.type))) return;
+  const role = CONFIG.villagerRole[cu.baseKind];
+  if (!G.volTurn || !role || !roleOpen(role)) return;   // 子どもや、役割がもういっぱいの人は申し出ない
+  cu.role = role;
   G.volTurn = false;
   cu.state = 'volunteer';
   cu.kind = cu.baseKind;
@@ -966,18 +1102,18 @@ function openRecruit(cu) {
   const voice = volVoice(cu.kind);
   G.paused = true;
   G.joy = null;
+  G.touch = null;
   G.moveTo = null;
   $('recruit-face').src = IMG(cu.kind);
   $('recruit-text').textContent = VOL_LINES[voice][randInt(0, VOL_LINES[voice].length - 1)];
   const box = $('recruit-choices');
   box.innerHTML = '';
-  // 役割を選ぶ（選んだ役割に合わせて見た目が変わる）
-  ROLES.forEach(r => {
+  // 手伝いたいことは、その人ごとに決まっている（仲間になると役割の服装に変わる）
+  const r = ROLES.find(x => x.type === cu.role);
+  $('recruit-text').textContent = OFFER_LINES[r.type][voice];
+  {
     const b = document.createElement('button');
-    const open = roleOpen(r.type);
-    const why = r.type === 'archer' && !G.tower ? '（見張り台を建てると選べる）' : !open ? '（もう十分いる）' : '';
-    b.innerHTML = `<img src="${IMG(r.icon)}" alt=""><span>${r.label}<small>${r.note}${why}</small></span>`;
-    b.disabled = !open;
+    b.innerHTML = `<img src="${IMG(r.icon)}" alt=""><span>${r.label}<small>${r.note}</small></span>`;
     b.onclick = () => {
       $('recruit-text').textContent = r.reply[voice];
       box.innerHTML = '';
@@ -985,7 +1121,7 @@ function openRecruit(cu) {
       setTimeout(() => { closeRecruit(); recruit(cu, r.type); }, 900);
     };
     box.appendChild(b);
-  });
+  }
   const later = document.createElement('button');
   later.className = 'later';
   later.textContent = 'あとで';
@@ -1071,7 +1207,7 @@ function updateHelpers(dt) {
         const b = bears.sort((a, c) => dist(h, a) - dist(h, c))[0];
         const ang = h.n * 2.4 + 0.6;
         const spot = { x: b.x + Math.cos(ang) * 60, y: b.y + Math.sin(ang) * 30 };
-        if (dist(h, b) > H.reach) moveTo(h, spot, H.speed, dt);
+        if (dist(h, b) > H.reach + (b.giant ? 70 : 0)) moveTo(h, b.giant ? { x: b.x + Math.cos(ang) * 110, y: b.y + Math.sin(ang) * 50 } : spot, H.speed, dt);
         else {
           h.face = b.x > h.x ? 1 : -1;
           if (h.atkT <= 0) {
@@ -1156,6 +1292,7 @@ function updateFx(dt) {
   G.snow.forEach(s => { s.y += s.v * dt / 800; s.x += Math.sin(G.time + s.v) * dt * 0.01; if (s.y > 1) { s.y = 0; s.x = Math.random(); } });
   G.shake = Math.max(0, G.shake - dt * 40);
   G.flash = Math.max(0, G.flash - dt);
+  G.fenceHitT = Math.max(0, (G.fenceHitT || 0) - dt);
   G.guideT = (G.guideT || 0) - dt;
   if (G.pad) G.pad.pulse += dt;
 }
@@ -1169,7 +1306,7 @@ function fxAt(name, x, y, size, rot = 0) {
 // 狩り場の柵：木の杭とロープ。真ん中は門（通り道）
 function drawFence(a) {
   const y = a.y + a.h + 20;
-  if (G.barricade) { drawBarricade(a, y); return; }
+  if (G.barricade) { drawBarricade(a, y); drawFenceHp(); return; }
   const gate = [a.x + a.w / 2 - 60, a.x + a.w / 2 + 60];
   const posts = [];
   for (let x = a.x; x <= a.x + a.w; x += 46) if (x < gate[0] || x > gate[1]) posts.push(x);
@@ -1202,11 +1339,12 @@ function drawBarricade(a, y) {
   G.fencePop = Math.min(1, (G.fencePop == null ? 1 : G.fencePop) + 1 / 40);
   const k = G.fencePop;
   const gate = [a.x + a.w / 2 - 60, a.x + a.w / 2 + 60];
+  const broken = G.battle && G.fenceHp <= 0;
   if (images.barricade) {
     const w = 70;   // 1枚の横幅（高さ58のとき）。少し重ねて隙間なく並べる
     for (let x = a.x - 10; x < a.x + a.w + 10; x += w - 12) {
       if (Math.abs(x + w / 2 - (gate[0] + gate[1]) / 2) < 40) continue;   // 門のところは空ける
-      drawSprite('barricade', x + w / 2, y + 8, 58 * k);
+      drawSprite(broken ? pick('barricade_broken', 'barricade') : 'barricade', x + w / 2, y + 8, 58 * k, { flash: G.fenceHitT > 0.12 });
     }
     drawSprite(pick('gate_open', 'barricade'), (gate[0] + gate[1]) / 2, y + 8, 64 * k);
     return;
@@ -1234,7 +1372,7 @@ function drawBarricade(a, y) {
 //  次にやること（ガイドの矢印）
 // ============================================================
 // ガイドの文の先頭の絵文字 → アイコン画像
-const GUIDE_ICONS = { '💰': 'coins_pile', '🙋': 'villager_happy', '🍖': 'meat_cooked', '🔥': 'grill_on', '🐻‍❄️': 'bear_walk' };
+const GUIDE_ICONS = { '⚔️': 'giant_idle', '💰': 'coins_pile', '🙋': 'villager_happy', '🍖': 'meat_cooked', '🔥': 'grill_on', '🐻‍❄️': 'bear_walk' };
 
 function currentGoal() {
   const P = G.player;
@@ -1246,14 +1384,16 @@ function currentGoal() {
   const cash = G.counters.find(c => c.cash > 0);
   if (cash) return { x: cash.cashPos.x, y: cash.cashPos.y, text: '💰 お金を拾おう' };
   if (G.volunteer && dist(G.volunteer, CONFIG.volunteer.spot) < 20) return { x: G.volunteer.x, y: G.volunteer.y, text: '🙋 村人が手伝いたいみたい！ 話しかけよう' };
-  if (P.stack[0] === 'cooked') return { x: G.counters[0].servePad.x, y: G.counters[0].servePad.y, text: '🍖 凍えた人に肉を配ろう' };
+  if (P.stack.includes('cooked')) return { x: G.counters[0].servePad.x, y: G.counters[0].servePad.y, text: '🍖 凍えた人に肉を配ろう' };
   // 背中がいっぱい・肉が落ちていない・もうグリルの近くにいる → 置きに行く（置き終わるまで）
   const grill = G.grills.slice().sort((a, b) => dist(P, a.inPad) - dist(P, b.inPad))[0];
-  if (P.stack[0] === 'raw' && (P.stack.length >= P.cap || !G.drops.length || dist(P, grill.inPad) < 110)) {
+  if (P.stack.includes('raw') && (P.stack.length >= P.cap || !G.drops.length || dist(P, grill.inPad) < 110)) {
     return { x: grill.inPad.x, y: grill.inPad.y, text: '🔥 グリルに肉を置こう' };
   }
   const g = G.grills.find(x => x.cooked > 0);
   if (g && !P.stack.length) return { x: g.outPad.x, y: g.outPad.y, text: '🍖 焼けた肉を取ろう' };
+  const gi = G.battle && G.battle.giant;
+  if (gi && gi.state !== 'dead' && !P.stack.length) return { x: gi.x, y: gi.y, h: 230, text: `⚔️ ${G.v.giant.name}をたおそう` };
   const b = G.bears.filter(x => x.state !== 'dead').sort((a, c) => dist(P, a) - dist(P, c))[0];
   if (b) return { x: b.x, y: b.y, h: b.boss ? 140 : 84, text: '🐻‍❄️ 白クマを倒して肉を集めよう' };
   return null;
@@ -1265,8 +1405,10 @@ function currentGoal() {
 function update(dt) {
   if (G.paused) return;
   G.time += dt;
+  animateTerritory(dt);
   updatePlayer(dt);
   updateBears(dt);
+  if (G.battle) updateBattle(dt);
   updateDrops(dt);
   updateGrills(dt);
   updateCustomers(dt);
@@ -1317,7 +1459,8 @@ function updateHud() {
   bump('money', G.money);
   $('up-btn').classList.toggle('ready', canAffordAnyUpgrade());
   bump('rescued', G.rescued);
-  if (G.v) {
+  if (G.battle) battleHud();
+  else if (G.v) {
     $('goal-num').textContent = `${Math.min(G.rescued, G.v.goal)} / ${G.v.goal}`;
     $('goal-bar').style.width = Math.min(100, G.rescued / G.v.goal * 100) + '%';
     $('goal').classList.toggle('done', !!(G.vs && G.vs.done));
@@ -1360,6 +1503,7 @@ function render() {
     const y = f.fy + (f.ty - f.fy) * k - Math.sin(k * Math.PI) * 50;
     drawSprite(f.name, x, y + f.h / 2, f.h);
   });
+  drawRocks();
   // 弓使いの矢
   G.arrows.forEach(ar => {
     ctx.save();
@@ -1440,6 +1584,7 @@ function render() {
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
   }
+  drawBanner(W, H);
   drawJoystick();
   drawCoinFly(W);
 }
@@ -1462,11 +1607,12 @@ function drawGround() {
     ctx.fillRect(0, 0, W, H);
   }
   // 狩り場（少し青い氷原）と柵
-  const a = CONFIG.hunt;
+  const a = G.hunt;
   ctx.fillStyle = 'rgba(120,170,220,.12)';
   roundRect(a.x, a.y, a.w, a.h, 40);
   ctx.fill();
   if (G.v.tint) { ctx.fillStyle = G.v.tint; ctx.fillRect(0, 0, W, H); }
+  drawTerritory();
   drawFence(a);
   // キャンプ側は少しあたたかい色（踏み固められた雪）
   const cg = ctx.createLinearGradient(0, a.y + a.h + 60, 0, H);
@@ -1698,6 +1844,7 @@ function drawCustomer(cu) {
 }
 
 function drawBear(b) {
+  if (b.giant) { drawGiant(b); return; }
   const h = b.boss ? 140 : 84;
   const k = b.pop;
   const C = CONFIG.combat;

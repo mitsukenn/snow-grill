@@ -50,8 +50,24 @@ const CONFIG = {
   volunteer: {
     first: 3,                // 最初の志願者は何人目に救った人か
     every: 8,                // そのあとは何人ごとに志願者が出るか
-    spot: { x: 330, y: 1150 },   // 志願者が待っている場所
+    spot: { x: 390, y: 1045 },   // 志願者が待っている場所
     max: { sword: 4, carrier: 2, archer: 1 },   // 多すぎると楽になりすぎるので控えめに   // 役割ごとの最大人数（弓は見張り台の数）
+  },
+
+  // ---- 決戦ステージ（白クマの群れ → 雪の巨人） ----
+  battle: {
+    fenceHp: 420,            // バリケードの耐久
+    firstWaveSec: 18,        // 最初の群れが来るまで
+    waveEvery: 26,           // 群れの間隔
+    waveBase: 2,             // 群れの白クマの数 = waveBase + 何波目か
+    giantAfter: 3,           // 何波目のあとに巨人が出るか
+    startCrew: ['sword', 'sword', 'archer'],   // 最初から来てくれる援軍
+    giantBase: {
+      hp: 160, speed: 26, cooldown: 2.4,
+      smashR: 150, windup: 1.15, smashDmg: 26, fenceDmg: 70,   // 地面たたき
+      throwRange: 460, throwR: 58, throwTime: 1.25, throwDmg: 16,   // 氷の岩投げ
+      meat: 24, reward: 200,
+    },
   },
 
   // ---- 戦闘：白クマも攻撃してくる ----
@@ -70,7 +86,13 @@ const CONFIG = {
   },
 
   // ---- マップ ----
-  hunt: { x: 40, y: 80, w: 640, h: 500 },           // 白クマが歩き回る狩り場
+  hunt: { x: 40, y: 80, w: 640, h: 500 },           // 白クマが歩き回る狩り場（いちばん広げたとき）
+  // ---- 領地：最初はせまく、解放するたびに設備のまわりまで広がる ----
+  territory: {
+    base: { x0: 130, y0: 330, x1: 560, y1: 1090 },   // はじめに歩ける範囲
+    hunt0: { x: 130, y: 300, w: 430, h: 280 },        // はじめの狩り場（狩り場拡張で hunt まで広がる）
+    margin: 95,              // 解放した設備のまわりをどれだけ広げるか
+  },
   bossHunt: { x: 40, y: 80, w: 640, h: 500 },
   playerStart: { x: 330, y: 640 },                   // 狩り場のすぐ手前から始める
   firstBear: { x: 330, y: 545 },                     // 最初の白クマはすぐ近くに
@@ -114,6 +136,7 @@ const CONFIG = {
   sprites: {
     hero_idle: '🧔', hero_walk: '🧔', hero_attack: '🧔', hero_hurt: '🧔',
     mob_axe: '🪓', mob_axe_attack: '🪓', mob_axe_down: '😵', mob_axe_g: '🪓', mob_axe_r: '🪓',
+    giant_idle: '👹', giant_walk: '👹', giant_windup: '👹', giant_smash: '👹', giant_throw: '👹', giant_roar: '👹', giant_hurt: '👹', giant_down: '😵', ice_rock: '🧊',
     watchtower: '🗼', barricade: '🪵', barricade_broken: '🪵', gate_open: '🚪',
     bear_step1: '🐻‍❄️',
     villager_old_m: '🥶', villager_old_m_happy: '😋', villager_old_f: '🥶', villager_old_f_happy: '😋',
@@ -134,7 +157,13 @@ const CONFIG = {
   // 村人の見た目の種類（画像が届いているものだけ使う）。villager_n01〜 は追加で作った村人
   // 並ぶ人は特徴の少ない「モブ」3種だけ（助っ人になると役割の服装に変わる）。
   // 個性のある村人（villager_old_m・villager_n01〜 など）は画像だけ用意してあり、今は使っていない
-  villagers: ['villager_m', 'villager_f', 'villager_child'],
+  villagers: ['villager_m', 'villager_f', 'villager_child', 'mob_ym1', 'mob_ym2', 'mob_ym3', 'mob_yf1', 'mob_yf2', 'mob_om1', 'mob_om2', 'mob_of1', 'mob_of2'],
+  // 村人ごとに、手伝いたいことが決まっている（おじさん・おばさん＝運ぶ、若い男性＝戦う、若い女性＝見張り、子ども＝手伝いには出ない）
+  villagerRole: {
+    villager_m: 'carrier', villager_f: 'carrier', villager_child: null,
+    mob_ym1: 'sword', mob_ym2: 'sword', mob_ym3: 'sword', mob_yf1: 'archer', mob_yf2: 'archer',
+    mob_om1: 'carrier', mob_om2: 'carrier', mob_of1: 'carrier', mob_of2: 'carrier',
+  },
   extraVillagers: ['villager_old_m', 'villager_old_f', 'villager_girl', 'villager_fisher', 'villager_mother']
     .concat(Array.from({ length: 18 }, (_, i) => 'villager_n' + String(i + 1).padStart(2, '0'))),
 

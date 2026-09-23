@@ -53,6 +53,21 @@ const VILLAGES = [
     ],
   },
   {
+    id: 'battle1', name: '白い峡谷の決戦', battle: true, icon: 'giant_idle',
+    map: { x: 50, y: 59 }, bearHp: 1.5, meatBonus: 1, extraBears: 0, priceMul: 1.5, want: [1, 3], snow: 110, tint: 'rgba(170,190,230,.16)',
+    giant: { name: '雪の巨人', hpMul: 1, dmgMul: 1, tint: null },
+    intro: [
+      ['rina', 'ユキト、大変！ 峠へ続く峡谷を、白クマの群れがふさいでいるの！'],
+      ['narr', '群れの奥から、地ひびきのような足音が聞こえる…'],
+      ['rina', '群れを率いているのは「雪の巨人」…！ 援軍を連れてきたわ。バリケードを守りながら戦って！'],
+      ['hero', '肉を焼いてお金をかせいで、強化しながら迎え撃つ！'],
+    ],
+    outro: [
+      ['rina', 'やった…！ 雪の巨人をたおしたわ！'],
+      ['hero', 'これで峠への道がひらけた。先を急ごう！'],
+    ],
+  },
+  {
     id: 'pass', name: '吹雪の峠', goal: 110,
     map: { x: 30, y: 50 }, bearHp: 1.8, meatBonus: 1, extraBears: 1, priceMul: 1.9, want: [2, 4], snow: 170, tint: 'rgba(200,215,240,.18)',
     intro: [
@@ -80,6 +95,20 @@ const VILLAGES = [
       ['sailor', 'がっはっは！ 港に活気が戻ったぜ！'],
       ['sailor', 'だが、この寒波の元は北の果ての王都にあるらしい…「氷の大白クマ」が目を覚ましたとか。'],
       ['hero', '王都へ行こう。寒波を終わらせるんだ！'],
+    ],
+  },
+  {
+    id: 'battle2', name: '氷河の大巨人', battle: true, icon: 'giant_idle',
+    map: { x: 60, y: 21 }, bearHp: 2.4, meatBonus: 2, extraBears: 1, priceMul: 2.7, want: [2, 4], snow: 140, tint: 'rgba(120,170,240,.18)',
+    giant: { name: '氷の大巨人', hpMul: 2.6, dmgMul: 1.6, tint: 'hue-rotate(185deg) saturate(1.6) brightness(1.05)' },
+    intro: [
+      ['sailor', 'おい、王都へ続く氷河に、とんでもねえデカブツがいやがる！'],
+      ['rina', '「氷の大巨人」…雪の巨人よりずっと強いわ。強化はしっかりしてきた？'],
+      ['hero', 'みんなの力を合わせれば、きっと勝てる！'],
+    ],
+    outro: [
+      ['sailor', 'がっはっは！ あの大巨人をやっつけちまうとはな！'],
+      ['rina', 'この先が王都よ。寒波の元をたちに行きましょう！'],
     ],
   },
   {
@@ -147,6 +176,7 @@ function showStory(lines, onDone) {
   };
   G.paused = true;
   G.joy = null;
+  G.touch = null;
   box.classList.remove('hidden');
   show();
 }
@@ -162,6 +192,7 @@ function openMap(open = true) {
   G.mapOpen = open;
   G.paused = open;
   G.joy = null;
+  G.touch = null;
   $('map').classList.toggle('hidden', !open);
   if (!open) return;
   Sound.sfx.click();
@@ -175,12 +206,12 @@ function openMap(open = true) {
     const st = SAVE.villages[v.id] || {};
     const unlocked = villageUnlocked(i);
     const b = document.createElement('button');
-    b.className = 'map-node' + (st.done ? ' done' : '') + (!unlocked ? ' locked' : '') + (v.id === G.cur ? ' current' : '');
+    b.className = 'map-node' + (v.battle ? ' battle' : '') + (st.done ? ' done' : '') + (!unlocked ? ' locked' : '') + (v.id === G.cur ? ' current' : '');
     b.style.left = v.map.x + '%';
     b.style.top = v.map.y + '%';
-    const icon = ['tent', 'igloo', 'campfire', 'logs', 'counter'][i] || 'tent';
+    const icon = v.icon || ['tent', 'igloo', 'campfire', 'logs', 'counter'][i % 5];
     b.innerHTML = `<img src="${IMG(icon)}" alt=""><span class="map-name">${v.name}</span>
-      <span class="map-state">${st.done ? '★ 開拓完了' : unlocked ? `${st.rescued || 0} / ${v.goal}人` : '🔒'}</span>`;
+      <span class="map-state">${st.done ? (v.battle ? '★ 撃破' : '★ 開拓完了') : !unlocked ? '🔒' : v.battle ? '⚔ 決戦' : `${st.rescued || 0} / ${v.goal}人`}</span>`;
     b.disabled = !unlocked;
     b.onclick = () => {
       openMap(false);
