@@ -244,6 +244,7 @@ function renderUpgrades() {
 
 function openUpgrades(open) {
   G.paused = open;
+  G.moveTo = null;
   G.joy = null;
   G.touch = null;
   G.keys = {};
@@ -451,6 +452,8 @@ function init() {
   $('map-btn').onclick = () => openMap(true);
   $('map-close').onclick = () => openMap(false);
   $('up-close').onclick = () => openUpgrades(false);
+  $('upgrades').addEventListener('click', e => { if (e.target.id === 'upgrades') openUpgrades(false); });
+  $('map').addEventListener('click', e => { if (e.target.id === 'map' || e.target.classList.contains('map-area')) openMap(false); });
   $('start').onclick = () => {
     $('start').classList.add('hidden');
     Sound.startBgm();
@@ -491,19 +494,22 @@ function resize() {
 // ・ドラッグ … その方向に歩き続ける（指を離すと止まる）
 // ・タップ（すぐ離す）… タップした場所まで自動で歩く
 function setupInput() {
-  // タッチした場所へ向かう。指をつけたまま動かすと、指の場所についていく
+  // タッチした場所へ向かう（パッドや台の近くなら、その真ん中に吸いつく）。
+  // 指をつけたまま動かすと指についていき、はなすとその場で止まる
   canvas.addEventListener('pointerdown', e => {
-    canvas.setPointerCapture(e.pointerId);
-    G.touch = { id: e.pointerId, x: e.clientX, y: e.clientY };
-    G.moveTo = touchTarget();
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* 取れなくても操作は続ける */ }
+    G.touch = { id: e.pointerId, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false };
+    G.moveTo = snapTarget(touchTarget());
     Sound.startBgm();
   });
   canvas.addEventListener('pointermove', e => {
-    if (G.touch && e.pointerId === G.touch.id) { G.touch.x = e.clientX; G.touch.y = e.clientY; }
+    if (!G.touch || e.pointerId !== G.touch.id) return;
+    G.touch.x = e.clientX; G.touch.y = e.clientY;
+    if (Math.hypot(G.touch.x - G.touch.sx, G.touch.y - G.touch.sy) > 12) G.touch.moved = true;
   });
   const end = e => {
     if (!G.touch || e.pointerId !== G.touch.id) return;
-    G.moveTo = touchTarget();   // 指をはなした場所まで歩いて止まる
+    if (G.touch.moved) G.moveTo = null;   // なぞったあとは、はなした所で止まる
     G.touch = null;
   };
   canvas.addEventListener('pointerup', end);
@@ -513,18 +519,31 @@ function setupInput() {
 }
 
 // 指の下にあるワールド座標（カメラが動いても毎フレーム計算し直す）
-function touchTarget() {
+// follow が true のときは、主人公が指で隠れないよう少し上を目指す
+function touchTarget(follow) {
   const r = canvas.getBoundingClientRect();
   const t = G.touch;
   return {
     x: G.cam.x + (t.x - r.left) / G.cam.scale,
-    y: G.cam.y + (t.y - r.top) / G.cam.scale,
-    t: 0, hold: true,
+    y: G.cam.y + (t.y - r.top) / G.cam.scale - (follow ? 55 : 0),
+    t: 0,
   };
 }
 
+// パッドや台の近くをタップしたら、その真ん中で止まる
+function snapTarget(p) {
+  const spots = [];
+  if (G.pad) spots.push(G.pad);
+  G.grills.forEach(g => spots.push(g.inPad, g.outPad));
+  G.counters.forEach(c => { spots.push(c.servePad); if (c.cash > 0) spots.push(c.cashPos); });
+  if (G.barricade && G.fenceMax && G.fenceHp < G.fenceMax) spots.push(repairSpot());
+  let best = null, bd = 60;
+  spots.forEach(s => { const d = dist(s, p); if (d < bd) { bd = d; best = s; } });
+  return best ? { x: best.x, y: best.y, t: 0 } : p;
+}
+
 function inputDir() {
-  if (G.touch && !G.paused) { const t = touchTarget(); t.t = G.moveTo ? G.moveTo.t : 0; G.moveTo = t; }
+  if (G.touch && G.touch.moved && !G.paused) { const t = touchTarget(true); t.t = G.moveTo ? G.moveTo.t : 0; G.moveTo = t; }
   let dx = 0, dy = 0, mag = 0;
   if (G.joy) {
     dx = G.joy.x - G.joy.sx;
@@ -535,12 +554,17 @@ function inputDir() {
   // タップした場所へ向かう（ドラッグやキーを使ったら取り消し）
   if (G.moveTo && !(G.joy && G.joy.moved)) {
     const bd = G.bounds;   // 領地の外をさわったら、ふちまで行く
-    G.moveTo.x = clamp(G.moveTo.x, bd.x0, bd.x1);
-    G.moveTo.y = clamp(G.moveTo.y, bd.y0, bd.y1);
+    const ox = G.moveTo.x, oy = G.moveTo.y;
+    G.moveTo.x = clamp(ox, bd.x0, bd.x1);
+    G.moveTo.y = clamp(oy, bd.y0, bd.y1);
+    if (Math.hypot(ox - G.moveTo.x, oy - G.moveTo.y) > 60 && G.time - (G.edgeTipT || -9) > 4) {
+      G.edgeTipT = G.time;
+      floatText(G.moveTo.x, G.moveTo.y - 60, '設備を解放すると広がるよ', '#fff', 18);
+    }
     const tdx = G.moveTo.x - G.player.x, tdy = G.moveTo.y - G.player.y;
     const len = Math.hypot(tdx, tdy);
     if (len < 8) G.moveTo = null;
-    else { dx = tdx / len; dy = tdy / len; mag = Math.min(1, len / 30); }
+    else { dx = tdx / len; dy = tdy / len; mag = len < 12 ? len / 12 : 1; }   // 最後の少しだけ減速
   }
   const k = G.keys;
   const kx = (k.d || k.arrowright ? 1 : 0) - (k.a || k.arrowleft ? 1 : 0);
@@ -1138,7 +1162,8 @@ function updateVolunteer() {
   if (!cu) return;
   const d = dist(G.player, cu);
   if (d > 110) cu.asked = false;
-  if (!cu.asked && d < 70 && dist(cu, CONFIG.volunteer.spot) < 20 && !G.paused) {
+  const still = !G.touch && Math.hypot(G.player.vx, G.player.vy) < 20;
+  if (!cu.asked && d < 75 && still && dist(cu, CONFIG.volunteer.spot) < 20 && !G.paused) {
     cu.asked = true;
     openRecruit(cu);
   }
@@ -1482,8 +1507,9 @@ function update(dt) {
   // カメラ：プレイヤーを追う
   const cam = G.cam;
   // 歩いている方向を少し先まで映す（ルックアヘッド）
-  G.lookX = (G.lookX || 0) + (G.player.vx * 0.35 - (G.lookX || 0)) * Math.min(1, dt * 2.5);
-  G.lookY = (G.lookY || 0) + (G.player.vy * 0.45 - (G.lookY || 0)) * Math.min(1, dt * 2.5);
+  const look = G.touch && G.touch.moved ? 0 : 1;
+  G.lookX = (G.lookX || 0) + (G.player.vx * 0.35 * look - (G.lookX || 0)) * Math.min(1, dt * 2.5);
+  G.lookY = (G.lookY || 0) + (G.player.vy * 0.45 * look - (G.lookY || 0)) * Math.min(1, dt * 2.5);
   const tx = clamp(G.player.x + G.lookX - G.viewW / 2, 0, CONFIG.world.w - G.viewW);
   const ty = clamp(G.player.y + G.lookY - G.viewH * 0.55, 0, Math.max(0, CONFIG.world.h - G.viewH));
   cam.x += (tx - cam.x) * Math.min(1, dt * 6);

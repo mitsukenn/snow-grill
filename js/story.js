@@ -177,6 +177,7 @@ function showStory(lines, onDone) {
   G.paused = true;
   G.joy = null;
   G.touch = null;
+  G.moveTo = null;
   box.classList.remove('hidden');
   show();
 }
@@ -193,6 +194,7 @@ function openMap(open = true) {
   G.paused = open;
   G.joy = null;
   G.touch = null;
+  G.moveTo = null;
   $('map').classList.toggle('hidden', !open);
   if (!open) return;
   Sound.sfx.click();
