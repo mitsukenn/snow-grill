@@ -136,3 +136,17 @@ html, body {
   cursor: pointer;
 }
 @keyframes pulse { 50% { transform: scale(1.06); } }
+
+/* 所持金・救った人数が増えたとき、ぴょんと跳ねる */
+.chip.bump { animation: chipBump .35s cubic-bezier(.3, 1.8, .5, 1); }
+@keyframes chipBump { 40% { transform: scale(1.18); background: rgba(255, 190, 40, .75); } }
+
+/* スタート画面の絵 */
+.start-art { position: relative; width: 280px; height: 170px; margin-bottom: -10px; }
+.start-art img { position: absolute; bottom: 0; filter: drop-shadow(0 10px 10px rgba(0, 0, 0, .45)); }
+.art-bear { right: 0; width: 160px; animation: artBear 2.4s ease-in-out infinite; }
+.art-hero { left: 20px; width: 130px; animation: artHero 1.2s ease-in-out infinite; }
+.art-meat { left: 120px; bottom: 110px; width: 56px; animation: artMeat 1.6s ease-in-out infinite; }
+@keyframes artBear { 50% { transform: translateY(-6px) rotate(2deg); } }
+@keyframes artHero { 50% { transform: translateY(-10px) rotate(-4deg); } }
+@keyframes artMeat { 50% { transform: translateY(-12px) rotate(18deg); } }

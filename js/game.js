@@ -21,7 +21,7 @@ function fmt(n) {
 // ============================================================
 const images = {};
 function loadImages() {
-  [...Object.keys(CONFIG.sprites), 'ground'].forEach(name => {
+  [...Object.keys(CONFIG.sprites), 'ground', 'ui/slash', 'ui/explosion', 'ui/sparkle'].forEach(name => {
     const im = new Image();
     im.onload = () => { images[name] = im; if (name === 'ground') groundPattern = null; };
     im.src = IMG(name);
@@ -83,7 +83,7 @@ const G = {
   money: 0, rescued: 0, unlockIdx: 0, kills: 0, muted: false,
   maxBears: CONFIG.bear.max, bossOn: false, fire: false, cookMul: 1, payBonus: 0,
   player: null, bears: [], drops: [], grills: [], counters: [], customers: [], helpers: [],
-  flyers: [], texts: [], parts: [], snow: [], steps: [],
+  flyers: [], texts: [], parts: [], snow: [], steps: [], fx: [],
   pad: null, spawnT: 0, bearT: 0, shake: 0, time: 0,
   cam: { x: 0, y: 0, scale: 1 },
   joy: null, keys: {},
@@ -264,7 +264,7 @@ function hitBear(b, dmg, from) {
   b.y += Math.sin(ang) * 6;
   Sound.sfx.hit();
   sparks(b.x, b.y - 40, 8, ['#fff', '#cfe8ff', '#ffe066']);
-  floatText(b.x + rand(-10, 10), b.y - (b.boss ? 130 : 85), '-' + dmg, '#fff', 22);
+  floatText(b.x + rand(-10, 10), b.y - (b.boss ? 130 : 85), '-' + dmg, '#ffe066', b.boss ? 32 : 28);
   G.shake = Math.max(G.shake, b.boss ? 6 : 3);
   if (b.hp <= 0) {
     b.state = 'dead';
@@ -274,6 +274,9 @@ function hitBear(b, dmg, from) {
     const n = b.boss ? CONFIG.bossBear.meat : CONFIG.bear.meat;
     for (let i = 0; i < n; i++) dropMeat(b.x, b.y - 20);
     sparks(b.x, b.y - 30, b.boss ? 30 : 14, ['#fff', '#e8f4ff', '#ffb3b3']);
+    fxAt('ui/explosion', b.x, b.y - 30, b.boss ? 200 : 120);
+    fxAt('ui/sparkle', b.x, b.y - 60, b.boss ? 140 : 90);
+    G.shake = Math.max(G.shake, b.boss ? 14 : 6);
     if (G.bossOn && !b.boss && G.kills % CONFIG.bossBear.everyKills === 0 && !G.bears.some(x => x.boss && x.state !== 'dead')) {
       setTimeout(() => spawnBear(true), 900);
     }
@@ -397,6 +400,7 @@ function updatePlayer(dt) {
     P.attackT = 0.18;
     P.face = target.x > P.x ? 1 : -1;
     Sound.sfx.swing();
+    fxAt('ui/slash', target.x, target.y - (target.boss ? 70 : 45), target.boss ? 120 : 80, P.face > 0 ? -0.3 : 0.3 + Math.PI);
     setTimeout(() => hitBear(target, P.damage, P), 90);
   }
 
@@ -640,6 +644,8 @@ function sparks(x, y, n, colors) {
 }
 
 function updateFx(dt) {
+  G.fx.forEach(f => { f.t += dt; });
+  G.fx = G.fx.filter(f => f.t < f.life);
   G.flyers.forEach(f => { f.t += dt; if (f.t >= f.dur && f.onDone) f.onDone(); });
   G.flyers = G.flyers.filter(f => f.t < f.dur);
   G.texts.forEach(t => { t.t += dt; t.y -= 40 * dt; });
@@ -655,6 +661,41 @@ function updateFx(dt) {
   if (G.pad) G.pad.pulse += dt;
 }
 G.coinFly = [];
+
+// 画像エフェクト（斬撃・爆発・キラキラ）：少し大きくなりながら消える
+function fxAt(name, x, y, size, rot = 0) {
+  G.fx.push({ name, x, y, size, rot, t: 0, life: 0.35 });
+}
+
+// 狩り場の柵：木の杭とロープ。真ん中は門（通り道）
+function drawFence(a) {
+  const y = a.y + a.h + 20;
+  const gate = [a.x + a.w / 2 - 60, a.x + a.w / 2 + 60];
+  const posts = [];
+  for (let x = a.x; x <= a.x + a.w; x += 46) if (x < gate[0] || x > gate[1]) posts.push(x);
+  posts.push(gate[0], gate[1]);
+  posts.sort((p, q) => p - q);
+  ctx.strokeStyle = '#8a5a2b';
+  ctx.lineWidth = 4;
+  for (let i = 0; i < posts.length - 1; i++) {
+    if (posts[i] === gate[0]) continue;   // 門のところはロープなし
+    [-20, -8].forEach(dy => {
+      ctx.beginPath();
+      ctx.moveTo(posts[i], y + dy);
+      ctx.quadraticCurveTo((posts[i] + posts[i + 1]) / 2, y + dy + 5, posts[i + 1], y + dy);
+      ctx.stroke();
+    });
+  }
+  posts.forEach(x => {
+    const big = x === gate[0] || x === gate[1];
+    ctx.fillStyle = 'rgba(40,70,110,.18)';
+    ctx.beginPath(); ctx.ellipse(x, y + 2, 9, 4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#7a4a22';
+    roundRect(x - (big ? 6 : 4), y - (big ? 44 : 30), big ? 12 : 8, big ? 46 : 32, 3); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.ellipse(x, y - (big ? 44 : 30), big ? 8 : 6, 4, 0, 0, Math.PI * 2); ctx.fill();
+  });
+}
 
 // ============================================================
 //  次にやること（ガイドの矢印）
@@ -677,7 +718,7 @@ function currentGoal() {
   const g = G.grills.find(x => x.cooked > 0);
   if (g && !P.stack.length) return { x: g.outPad.x, y: g.outPad.y, text: '🍖 焼けた肉を取ろう' };
   const b = G.bears.filter(x => x.state !== 'dead').sort((a, c) => dist(P, a) - dist(P, c))[0];
-  if (b) return { x: b.x, y: b.y, text: '🐻‍❄️ 白クマを倒して肉を集めよう' };
+  if (b) return { x: b.x, y: b.y, h: b.boss ? 140 : 84, text: '🐻‍❄️ 白クマを倒して肉を集めよう' };
   return null;
 }
 
@@ -707,8 +748,19 @@ function update(dt) {
 }
 
 function updateHud() {
-  $('money').textContent = fmt(G.money);
-  $('rescued').textContent = fmt(G.rescued);
+  const bump = (id, v) => {
+    const el = $(id);
+    if (el.dataset.v !== undefined && +el.dataset.v < v) {
+      const chip = el.closest('.chip');
+      chip.classList.remove('bump');
+      void chip.offsetWidth;
+      chip.classList.add('bump');
+    }
+    el.dataset.v = v;
+    el.textContent = fmt(v);
+  };
+  bump('money', G.money);
+  bump('rescued', G.rescued);
 }
 
 // ============================================================
@@ -745,6 +797,19 @@ function render() {
     const x = f.fx + (f.tx - f.fx) * k;
     const y = f.fy + (f.ty - f.fy) * k - Math.sin(k * Math.PI) * 50;
     drawSprite(f.name, x, y + f.h / 2, f.h);
+  });
+  // 画像エフェクト
+  G.fx.forEach(f => {
+    const im = images[f.name];
+    if (!im) return;
+    const k = f.t / f.life;
+    ctx.save();
+    ctx.globalAlpha = 1 - k * k;
+    ctx.translate(f.x, f.y);
+    ctx.rotate(f.rot);
+    const sz = f.size * (0.6 + k * 0.6);
+    ctx.drawImage(im, -sz / 2, -sz / 2, sz, sz);
+    ctx.restore();
   });
   // 粒
   G.parts.forEach(p => {
@@ -809,15 +874,14 @@ function drawGround() {
   ctx.fillStyle = 'rgba(120,170,220,.12)';
   roundRect(a.x, a.y, a.w, a.h, 40);
   ctx.fill();
-  ctx.strokeStyle = 'rgba(110,80,50,.8)';
-  ctx.lineWidth = 5;
-  ctx.setLineDash([2, 22]);
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(a.x, a.y + a.h + 20);
-  ctx.lineTo(a.x + a.w, a.y + a.h + 20);
-  ctx.stroke();
-  ctx.setLineDash([]);
+  drawFence(a);
+  // キャンプ側は少しあたたかい色（踏み固められた雪）
+  const cg = ctx.createLinearGradient(0, a.y + a.h + 60, 0, H);
+  cg.addColorStop(0, 'rgba(255,225,190,0)');
+  cg.addColorStop(0.25, 'rgba(255,225,190,.22)');
+  cg.addColorStop(1, 'rgba(255,215,170,.3)');
+  ctx.fillStyle = cg;
+  ctx.fillRect(0, a.y + a.h + 60, W, H);
   // 足あと
   G.steps.forEach(s => {
     ctx.fillStyle = `rgba(150,180,210,${Math.min(0.35, s.t / 3)})`;
@@ -1071,9 +1135,19 @@ function drawGoalArrow() {
   const cam = G.cam;
   const inView = g.x > cam.x + 20 && g.x < cam.x + G.viewW - 20 && g.y > cam.y + 90 && g.y < cam.y + G.viewH - 20;
   const bounce = Math.sin(G.time * 6) * 8;
+  if (inView) {
+    // 足元の光る円（広がって消える波紋）
+    const k = (G.time * 1.2) % 1;
+    ctx.save();
+    ctx.strokeStyle = `rgba(255,210,63,${1 - k})`;
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.ellipse(g.x, g.y, 30 + k * 30, (30 + k * 30) * 0.5, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  }
   ctx.save();
   if (inView) {
-    ctx.translate(g.x, g.y - 70 + bounce);
+    ctx.translate(g.x, g.y - (g.h || 40) - 34 + bounce);
+    ctx.scale(1.3, 1.3);
   } else {
     const cx = clamp(g.x, cam.x + 30, cam.x + G.viewW - 30);
     const cy = clamp(g.y, cam.y + 110, cam.y + G.viewH - 40);
