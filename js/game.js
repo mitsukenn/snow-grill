@@ -157,6 +157,13 @@ function applyUnlock(id, fromSave) {
       if (G.helpers.filter(h => h.type === 'sword').length < CONFIG.helper.sword.max) { made = makeHelper('sword'); G.helpers.push(made); }
       break;
     case 'barricade': G.barricade = true; if (!fromSave) G.fencePop = 0; break;
+    case 'tower':
+      G.tower = { ...CONFIG.helper.archer.post, pop: fromSave ? 1 : 0 };
+      if (!fromSave && !G.helpers.some(h => h.type === 'archer')) {
+        const m = (G.vs.crew || []).find(c => (c.type || c) === 'archer');
+        if (m) { const h = makeHelper('archer'); h.kind = m.kind; G.helpers.push(h); }
+      }
+      break;
     case 'archer': made = makeHelper('archer'); G.helpers.push(made); break;
     case 'carrier': made = makeHelper('carrier'); G.helpers.push(made); break;
     case 'counter2': made = makeCounter(CONFIG.counters[1]); G.counters.push(made); break;
@@ -253,7 +260,7 @@ function enterVillage(id) {
   G.vs = SAVE.villages[id] = SAVE.villages[id] || { unlockIdx: 0, rescued: 0, kills: 0, done: false };
   Object.assign(G, {
     bears: [], drops: [], customers: [], helpers: [], flyers: [], texts: [], parts: [], steps: [], fx: [], arrows: [],
-    fire: false, barricade: false, bossOn: !!G.v.boss, maxBears: CONFIG.bear.max + G.v.extraBears, spawnT: 0, bearT: 0, moveTo: null,
+    fire: false, barricade: false, tower: null, volunteer: null, bossOn: !!G.v.boss, maxBears: CONFIG.bear.max + G.v.extraBears, spawnT: 0, bearT: 0, moveTo: null,
   });
   G.grills = [makeGrill(CONFIG.grills[0])];
   G.counters = [makeCounter(CONFIG.counters[0])];
@@ -262,7 +269,16 @@ function enterVillage(id) {
   G.kills = G.vs.kills || 0;
   G.unlockIdx = G.vs.unlockIdx || 0;
   for (let i = 0; i < G.unlockIdx; i++) applyUnlock(unlockAt(i).id, true);
+  G.vs.crew = G.vs.crew || [];
+  G.vs.crew.forEach(c => {
+    const m = typeof c === 'string' ? { type: c } : c;
+    if (m.type === 'archer' && !G.tower) return;   // 弓使いは見張り台があるときだけ
+    const h = makeHelper(m.type);
+    h.kind = m.kind;
+    G.helpers.push(h);
+  });
   nextPad();
+  for (let i = 0; i < 80; i++) updateCustomers(0.25);   // 村に着いたときから、肉を待つ人の列は満員
   for (let i = 0; i < G.maxBears; i++) spawnBear(false);
   // はじめての村では、すぐ目の前に白クマを置いて、いきなり戦えるように
   if (!G.unlockIdx && !G.rescued) Object.assign(G.bears[0], { x: CONFIG.firstBear.x, y: CONFIG.firstBear.y, tx: CONFIG.firstBear.x, ty: CONFIG.firstBear.y, t: 4 });
@@ -438,6 +454,7 @@ function hitBear(b, dmg, from) {
   if (b.state === 'dead') return;
   b.hp -= dmg;
   b.hitT = 0.16;
+  b.angryT = CONFIG.combat.angrySec;
   const ang = Math.atan2(b.y - from.y, b.x - from.x);
   b.x += Math.cos(ang) * 10;
   b.y += Math.sin(ang) * 6;
@@ -478,8 +495,9 @@ function updateBears(dt) {
     b.cd = Math.max(0, (b.cd || 0) - dt);
     if (b.state === 'dead') { b.deadT -= dt; return; }
     const reach = b.boss ? C.boss.reach : C.reach;
+    b.angryT = Math.max(0, (b.angryT || 0) - dt);
     if (b.state === 'windup') {
-      b.wt -= dt;
+      b.wt -= b.hitT > 0 ? dt * 0.7 : dt;   // 攻撃を当てている間は「ため」が遅くなる（攻めれば少し安全）
       if (b.target) b.face = b.target.x > b.x ? 1 : -1;
       if (b.wt <= 0) {
         // 攻撃！ 赤い円の中にいたらダメージ（ためている間に逃げればよけられる）
@@ -499,7 +517,7 @@ function updateBears(dt) {
       return;
     }
     // いちばん近い相手を追いかける
-    let tgt = null, best = C.aggro;
+    let tgt = null, best = b.angryT > 0 ? C.angryAggro : C.aggro;
     bearTargets().forEach(t => { const d = dist(t, b); if (d < best) { best = d; tgt = t; } });
     if (tgt) {
       b.state = 'chase';
@@ -515,6 +533,10 @@ function updateBears(dt) {
         b.wt = b.wtMax = b.boss ? C.boss.windup : C.windup;
         b.target = tgt;
         Sound.sfx.growl();
+        if (tgt === G.player && !SAVE.seen.dodgeTip) {   // はじめての攻撃のときだけヒント
+          SAVE.seen.dodgeTip = true;
+          floatText(G.player.x, G.player.y - 130, '赤い円から逃げろ！', '#ff5a5a', 26);
+        }
       }
     } else {
       b.state = 'wander';
@@ -560,13 +582,13 @@ function damageUnit(u, dmg, from) {
     Sound.sfx.hurt();
     if (u.hp <= 0) playerDown();
   } else if (u.hp <= 0) {
-    // 助っ人はやられすぎると倒れる（しばらくすると起き上がる）
+    // 助っ人は体力がなくなると「疲れちゃった…」とテントへ帰って休む（休んだらまた戻ってくる）
     u.hp = 0;
     u.downT = CONFIG.helper.downSec;
+    u.resting = false;
     u.stack.forEach(() => dropMeat(u.x, u.y - 20));
     u.stack = [];
-    floatText(u.x, u.y - 110, 'ダウン…', '#ffb3b3', 22);
-    Sound.sfx.bearDown();
+    say(u, TIRED_LINES[volVoice(u.kind || '')][randInt(0, 1)], 3);
   }
 }
 
@@ -675,6 +697,7 @@ function updatePlayer(dt) {
   }
   P.atkT -= dt;
   P.attackT = Math.max(0, P.attackT - dt);
+  if (P.pendingHit && (P.pendingHit.t -= dt) <= 0) { hitBear(P.pendingHit.target, P.damage, P); P.pendingHit = null; }
 
   // 自動攻撃：いちばん近い白クマ
   let target = null, best = CONFIG.player.attackRange;
@@ -689,7 +712,7 @@ function updatePlayer(dt) {
     P.face = target.x > P.x ? 1 : -1;
     Sound.sfx.swing();
     fxAt('ui/slash', target.x, target.y - (target.boss ? 70 : 45), target.boss ? 120 : 80, P.face > 0 ? -0.3 : 0.3 + Math.PI);
-    setTimeout(() => hitBear(target, P.damage, P), 90);
+    P.pendingHit = { target, t: 0.09 };   // 斧が当たるのは少しあと（ゲーム内時間で数える）
   }
 
   interactStations(P, dt, CONFIG.player.transferSec, P.cap, true);
@@ -811,12 +834,14 @@ function updateGrills(dt) {
 function updateCustomers(dt) {
   const C = CONFIG.customer;
   // 新しいお客さん
+  // 列はいつも満員：空きができたら、すぐ次の人が並びに来る
   G.spawnT -= dt;
   const counter = G.counters.slice().sort((a, b) => a.queue.length - b.queue.length)[0];
   if (G.spawnT <= 0 && counter.queue.length < C.maxQueue) {
-    G.spawnT = rand(...C.spawnSec);
+    G.spawnT = 0.25;
     // 村人の見た目：画像が届いている種類からランダム
-    const kinds = ['villager_m', 'villager_f', 'villager_child'].concat(['villager_old_m', 'villager_old_f', 'villager_girl', 'villager_fisher', 'villager_mother'].filter(k => images[k]));
+    const kinds = CONFIG.villagers.filter(k => images[k]);
+    if (!kinds.length) kinds.push('villager_m');
     const cu = {
       x: counter.x + rand(-30, 30), y: CONFIG.world.h + 40, want: randInt(...G.v.want), got: 0,
       kind: kinds[randInt(0, kinds.length - 1)], state: 'queue', counter, walk: 0, face: 1, pop: 1,
@@ -848,10 +873,13 @@ function updateCustomers(dt) {
           Sound.sfx.happy();
           floatText(front.x, front.y - 90, 'ありがとう！', '#fff', 20);
           front.state = 'leave';
-          front.kind = images[front.kind + '_happy'] ? front.kind + '_happy' : 'villager_happy';
+          front.baseKind = front.kind;
+          if (images[front.kind + '_happy']) front.kind += '_happy';   // 笑顔の絵がある人は笑顔に（無ければハートを出す）
+          front.happy = true;
           front.exit = { x: Math.random() < 0.5 ? -60 : CONFIG.world.w + 60, y: rand(1150, 1350) };
           c.queue.shift();
           G.rescued++;
+          maybeVolunteer(front);
           updateHud();
           if (!G.vs.done && G.rescued >= G.v.goal) villageClear();
         }
@@ -859,7 +887,7 @@ function updateCustomers(dt) {
     }
   });
   G.customers.forEach(cu => {
-    const target = cu.state === 'leave' ? cu.exit : cu.slot;
+    const target = cu.state === 'leave' ? cu.exit : cu.state === 'volunteer' ? CONFIG.volunteer.spot : cu.slot;
     if (!target) return;
     const d = Math.hypot(target.x - cu.x, target.y - cu.y);
     const sp = C.speed * (cu.state === 'leave' ? 1.3 : 1) * dt;
@@ -873,6 +901,114 @@ function updateCustomers(dt) {
     if (cu.state === 'leave' && d < 4) cu.gone = true;
   });
   G.customers = G.customers.filter(cu => !cu.gone);
+}
+
+// ============================================================
+//  志願者：肉をもらった村人がときどき「手伝わせて！」と残ってくれる
+// ============================================================
+const VOL_LINES = {
+  boy: ['ぼくも手伝いたい！ 何をすればいい？', 'おいしかった！ ぼくにも何かやらせて！'],
+  man: ['助かったぜ！ おれにも何か手伝わせてくれ！', 'この恩は返す。おれは何をすればいい？'],
+  woman: ['ありがとう！ わたしにも何かできることはある？', 'あったまったわ。わたしは何をしましょうか？'],
+};
+const TIRED_LINES = {
+  boy: ['ごめん、ちょっと疲れちゃった…', 'もうヘトヘト…休んでくるね'],
+  man: ['わりぃ、もう腕が上がらねえ…', 'ちょっと休ませてくれ…'],
+  woman: ['ごめんなさい、少し休ませて…', 'もう戦えないわ…ひと休みするね'],
+};
+const BACK_LINES = ['おまたせ！ また頑張るよ！', 'ふう、元気になった！', 'よし、もうひと働きだ！'];
+// 助っ人のひとこと（頭の上の吹き出し）
+function say(o, text, sec = 2.5) { o.say = { text, t: sec }; }
+
+const volVoice = kind => /child|girl/.test(kind) ? 'boy' : /_f|mother/.test(kind) ? 'woman' : 'man';
+const ROLES = [
+  { type: 'sword', icon: 'mob_axe', label: '一緒に白クマと戦って！', note: '斧で戦って、生肉をグリルへ運ぶ',
+    reply: { boy: 'まかせて！ 斧ならつかえるよ！', man: 'おう！ 白クマなんざ怖くねえ！', woman: 'わかったわ、斧を持ってくる！' } },
+  { type: 'carrier', icon: 'helper_cook', label: '焼けた肉を運んで！', note: 'グリルの肉を配給台へ運ぶ',
+    reply: { boy: 'うん！ いっぱい運ぶね！', man: 'よし、運ぶのはまかせろ！', woman: 'みんなに届けるわね！' } },
+  { type: 'archer', icon: 'archer_aim', label: '見張り台で見張って！', note: '高い所から矢で白クマをうつ',
+    reply: { boy: '高いところ、好き！', man: '目には自信があるんだ。まかせな！', woman: '弓なら得意よ。見張りはまかせて！' } },
+];
+
+function crewCount(type) { return G.helpers.filter(h => h.type === type).length; }
+function roleOpen(type) {
+  if (type === 'archer') return !!G.tower && crewCount('archer') < 1;
+  return crewCount(type) < CONFIG.volunteer.max[type];
+}
+
+function maybeVolunteer(cu) {
+  const V = CONFIG.volunteer;
+  if (G.volunteer || !ROLES.some(r => roleOpen(r.type))) return;
+  if (G.rescued !== V.first && (G.rescued - V.first) % V.every !== 0) return;
+  cu.state = 'volunteer';
+  cu.kind = cu.baseKind;
+  G.volunteer = cu;
+  cu.asked = false;
+  floatText(cu.x, cu.y - 110, '手伝わせて！', '#ffd23f', 22);
+}
+
+// 志願者のところまで行ったら、役割を選ぶ
+function updateVolunteer() {
+  const cu = G.volunteer;
+  if (!cu) return;
+  const d = dist(G.player, cu);
+  if (d > 110) cu.asked = false;
+  if (!cu.asked && d < 70 && dist(cu, CONFIG.volunteer.spot) < 20 && !G.paused) {
+    cu.asked = true;
+    openRecruit(cu);
+  }
+}
+
+function openRecruit(cu) {
+  const voice = volVoice(cu.kind);
+  G.paused = true;
+  G.joy = null;
+  G.moveTo = null;
+  $('recruit-face').src = IMG(cu.kind);
+  $('recruit-text').textContent = VOL_LINES[voice][randInt(0, VOL_LINES[voice].length - 1)];
+  const box = $('recruit-choices');
+  box.innerHTML = '';
+  ROLES.forEach(r => {
+    const b = document.createElement('button');
+    const open = roleOpen(r.type);
+    const why = r.type === 'archer' && !G.tower ? '（見張り台を建てると選べる）' : !open ? '（もう十分いる）' : '';
+    b.innerHTML = `<img src="${IMG(r.icon)}" alt=""><span>${r.label}<small>${r.note}${why}</small></span>`;
+    b.disabled = !open;
+    b.onclick = () => {
+      $('recruit-text').textContent = r.reply[voice];
+      box.innerHTML = '';
+      Sound.sfx.unlock();
+      setTimeout(() => { closeRecruit(); recruit(cu, r.type); }, 900);
+    };
+    box.appendChild(b);
+  });
+  const later = document.createElement('button');
+  later.className = 'later';
+  later.textContent = 'あとで';
+  later.onclick = closeRecruit;
+  box.appendChild(later);
+  Sound.sfx.click();
+  $('recruit').classList.remove('hidden');
+}
+
+function closeRecruit() {
+  $('recruit').classList.add('hidden');
+  G.paused = G.mapOpen || !$('upgrades').classList.contains('hidden');
+}
+
+function recruit(cu, type) {
+  const h = makeHelper(type);
+  if (type !== 'archer') { h.x = cu.x; h.y = cu.y; }
+  h.pop = 0;
+  h.kind = cu.kind;   // 志願した村人の見た目のまま助っ人になる
+  G.helpers.push(h);
+  G.vs.crew.push({ type, kind: cu.kind });
+  cu.gone = true;
+  G.volunteer = null;
+  sparks(h.x, h.y - 40, 24, ['#ffd23f', '#fff', '#7fe0ff']);
+  floatText(h.x, h.y - 130, '仲間になった！', '#ffd23f', 26);
+  say(h, 'がんばるぞ！', 2);
+  persist();
 }
 
 // ============================================================
@@ -895,9 +1031,22 @@ function updateHelpers(dt) {
     h.atkT -= dt;
     h.attackT = Math.max(0, h.attackT - dt);
     h.hurtT = Math.max(0, (h.hurtT || 0) - dt);
+    if (h.say) { h.say.t -= dt; if (h.say.t <= 0) h.say = null; }
     if (h.downT > 0) {
+      // テントまで歩いて帰り、中で休む
+      const home = CONFIG.helper.home;
+      if (!h.resting) {
+        moveTo(h, home, 90, dt);
+        if (dist(h, home) < 8) h.resting = true;
+        return;
+      }
       h.downT -= dt;
-      if (h.downT <= 0) { h.downT = 0; h.hp = h.maxHp; floatText(h.x, h.y - 100, '復活！', '#7fe0ff', 20); }
+      if (h.downT <= 0) {
+        h.downT = 0;
+        h.resting = false;
+        h.hp = h.maxHp;
+        say(h, BACK_LINES[randInt(0, BACK_LINES.length - 1)], 2.5);
+      }
       return;
     }
     if (h.maxHp) h.hp = Math.min(h.maxHp, h.hp + 3 * dt);
@@ -1050,9 +1199,9 @@ function drawBarricade(a, y) {
   const k = G.fencePop;
   const gate = [a.x + a.w / 2 - 60, a.x + a.w / 2 + 60];
   if (images.barricade) {
-    const w = 96;
-    for (let x = a.x - 10; x < a.x + a.w + 10; x += w - 8) {
-      if (x + w / 2 > gate[0] && x + w / 2 < gate[1]) continue;
+    const w = 70;   // 1枚の横幅（高さ58のとき）。少し重ねて隙間なく並べる
+    for (let x = a.x - 10; x < a.x + a.w + 10; x += w - 12) {
+      if (Math.abs(x + w / 2 - (gate[0] + gate[1]) / 2) < 40) continue;   // 門のところは空ける
       drawSprite('barricade', x + w / 2, y + 8, 58 * k);
     }
     drawSprite(pick('gate_open', 'barricade'), (gate[0] + gate[1]) / 2, y + 8, 64 * k);
@@ -1080,6 +1229,9 @@ function drawBarricade(a, y) {
 // ============================================================
 //  次にやること（ガイドの矢印）
 // ============================================================
+// ガイドの文の先頭の絵文字 → アイコン画像
+const GUIDE_ICONS = { '💰': 'coins_pile', '🙋': 'villager_happy', '🍖': 'meat_cooked', '🔥': 'grill_on', '🐻‍❄️': 'bear_walk' };
+
 function currentGoal() {
   const P = G.player;
   const tutorial = G.unlockIdx < 2;
@@ -1089,6 +1241,7 @@ function currentGoal() {
   }
   const cash = G.counters.find(c => c.cash > 0);
   if (cash) return { x: cash.cashPos.x, y: cash.cashPos.y, text: '💰 お金を拾おう' };
+  if (G.volunteer && dist(G.volunteer, CONFIG.volunteer.spot) < 20) return { x: G.volunteer.x, y: G.volunteer.y, text: '🙋 村人が手伝いたいみたい！ 話しかけよう' };
   if (P.stack[0] === 'cooked') return { x: G.counters[0].servePad.x, y: G.counters[0].servePad.y, text: '🍖 凍えた人に肉を配ろう' };
   // 背中がいっぱい・肉が落ちていない・もうグリルの近くにいる → 置きに行く（置き終わるまで）
   const grill = G.grills.slice().sort((a, b) => dist(P, a.inPad) - dist(P, b.inPad))[0];
@@ -1114,6 +1267,7 @@ function update(dt) {
   updateGrills(dt);
   updateCustomers(dt);
   updateHelpers(dt);
+  updateVolunteer();
   updateFx(dt);
   // カメラ：プレイヤーを追う
   const cam = G.cam;
@@ -1126,7 +1280,16 @@ function update(dt) {
   cam.y += (ty - cam.y) * Math.min(1, dt * 6);
   const goal = currentGoal();
   const guide = $('guide');
-  guide.textContent = goal ? goal.text : '';
+  const text = goal ? goal.text : '';
+  if (guide.dataset.text !== text) {
+    guide.dataset.text = text;
+    const m = text.match(/^(\S+)\s+(.*)$/);
+    const icon = m && GUIDE_ICONS[m[1]];
+    guide.innerHTML = icon ? `<span class="g-ico"><img src="${IMG(icon)}" alt=""></span><span class="g-txt">${m[2]}</span>` : `<span class="g-txt">${text}</span>`;
+    guide.classList.remove('pop');
+    void guide.offsetWidth;
+    guide.classList.add('pop');
+  }
   guide.classList.toggle('hidden', !goal);
   G.goal = goal;
 }
@@ -1177,6 +1340,7 @@ function render() {
   G.customers.forEach(cu => list.push({ y: cu.y, draw: () => drawCustomer(cu) }));
   G.bears.forEach(b => list.push({ y: b.y, draw: () => drawBear(b) }));
   G.helpers.forEach(h => list.push({ y: h.y, draw: () => drawHelper(h) }));
+  if (G.tower && !G.helpers.some(h => h.type === 'archer')) list.push({ y: G.tower.y, draw: () => drawTower(null) });
   G.drops.forEach(m => list.push({ y: m.y, draw: () => drawDrop(m) }));
   list.push({ y: G.player.y, draw: drawPlayer });
   list.sort((a, b) => a.y - b.y).forEach(o => o.draw());
@@ -1449,11 +1613,28 @@ function drawCounter(c) {
 }
 
 function drawCustomer(cu) {
-  const cold = cu.state !== 'leave';
+  const cold = cu.state === 'queue';
   const jx = cold ? Math.sin(G.time * 40 + cu.x) * 1.2 : 0;
   const bob = Math.abs(Math.sin(cu.walk)) * 3;
   shadow(cu.x, cu.y, 18);
   drawSprite(cu.kind, cu.x + jx, cu.y - bob, cu.kind === 'villager_child' ? 56 : 70, { flip: cu.face < 0 });
+  if (cu.state === 'leave' && cu.happy && !cu.kind.endsWith('_happy')) {
+    ctx.font = '18px serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('❤️', cu.x, cu.y - 78 - Math.abs(Math.sin(G.time * 5)) * 6);
+  }
+  if (cu.state === 'volunteer') {
+    const k = Math.abs(Math.sin(G.time * 4)) * 6;
+    ctx.fillStyle = '#ffd23f';
+    ctx.strokeStyle = 'rgba(120,60,0,.8)';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(cu.x, cu.y - 96 - k, 15, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.font = '900 20px "Hiragino Sans",sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#7a3c00';
+    ctx.fillText('！', cu.x, cu.y - 89 - k);
+    return;
+  }
   // 吹き出し：あと何個ほしいか
   // 顔が隠れないように、吹き出しは村人の横に出す（列の先頭4人まで）
   if (cold && cu.slot && dist(cu, cu.slot) < 30 && cu.counter.queue.indexOf(cu) < 4) {
@@ -1518,7 +1699,7 @@ function drawBear(b) {
 
 // 体力ゲージ（減っているときだけ出す）
 function hpBar(o, y, w = 50) {
-  if (!o.maxHp || o.hp >= o.maxHp) return;
+  if (!o.maxHp) return;
   const r = Math.max(0, o.hp / o.maxHp);
   ctx.fillStyle = 'rgba(0,0,0,.5)';
   roundRect(o.x - w / 2 - 1, y - 1, w + 2, 9, 4.5); ctx.fill();
@@ -1582,12 +1763,78 @@ function drawPlayer() {
   }
 }
 
+// 志願した村人の見た目（あれば役割ごとの専用の絵、無ければ村人の絵に持ち物を重ねる）
+function helperLook(h) {
+  const k = h.kind;
+  if (h.type === 'sword') return { name: pick(k + '_axe', k), tool: images[k + '_axe'] ? null : 'axe' };
+  if (h.type === 'archer') return { name: pick(k + '_bow', k), tool: images[k + '_bow'] ? null : 'bow' };
+  return { name: k, tool: null };
+}
+const helperH = h => /child|girl/.test(h.kind || '') ? 56 : 66;
+
+// 手に持った斧・弓（村人の絵に重ねる）
+function drawTool(h, tool, x, y) {
+  const f = h.face < 0 ? -1 : 1;
+  ctx.save();
+  ctx.translate(x + f * 16, y - helperH(h) * 0.42);
+  ctx.scale(f, 1);
+  if (tool === 'axe') {
+    const swing = h.attackT > 0 ? 1.6 - (h.attackT / 0.2) * 2.4 : -0.5;
+    ctx.rotate(swing);
+    const im = images.axe_wood;
+    if (im) ctx.drawImage(im, -8, -40, 36, 36 * im.height / im.width);
+  } else if (tool === 'bow') {
+    ctx.strokeStyle = '#7a4a22'; ctx.lineWidth = 3.5;
+    ctx.beginPath(); ctx.arc(-4, 0, 16, -1.2, 1.2); ctx.stroke();
+    ctx.strokeStyle = '#eee'; ctx.lineWidth = 1.2;
+    const pull = h.attackT > 0 ? 0 : 6;
+    ctx.beginPath(); ctx.moveTo(Math.cos(-1.2) * 16 - 4, Math.sin(-1.2) * 16); ctx.lineTo(-pull, 0); ctx.lineTo(Math.cos(1.2) * 16 - 4, Math.sin(1.2) * 16); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// 頭の上の吹き出し
+function drawSay(o, y) {
+  if (!o.say) return;
+  ctx.font = '900 13px "Hiragino Sans",sans-serif';
+  const w = ctx.measureText(o.say.text).width + 18;
+  const a = Math.min(1, o.say.t * 3);
+  const cx = clamp(o.x, w / 2 + 4, CONFIG.world.w - w / 2 - 4);   // 画面の端からはみ出さない
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.fillStyle = 'rgba(255,255,255,.96)';
+  roundRect(cx - w / 2, y - 26, w, 26, 12); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(o.x - 6, y); ctx.lineTo(o.x, y + 8); ctx.lineTo(o.x + 6, y); ctx.fill();
+  ctx.fillStyle = '#1d3a5f';
+  ctx.textAlign = 'center';
+  ctx.fillText(o.say.text, cx, y - 8);
+  ctx.restore();
+}
+
 function drawHelper(h) {
   const down = h.downT > 0;
-  const bob = down || h.type === 'archer' ? 0 : Math.abs(Math.sin(h.walk)) * 3;
+  if (down && h.resting) return;   // テントの中で休んでいる
+  const bob = h.type === 'archer' ? 0 : Math.abs(Math.sin(h.walk)) * (down ? 1.5 : 3);
+  if (h.type === 'archer') { if (G.tower) drawTower(h); return; }
   shadow(h.x, h.y, 18);
+  if (h.kind) {
+    const look = helperLook(h);
+    const hh = helperH(h);
+    ctx.save();
+    ctx.translate(h.x, h.y);
+    const sc = popScale(h);
+    ctx.scale(sc, sc);
+    ctx.translate(-h.x, -h.y);
+    drawStack(h, h.y - hh * 0.62 - bob);
+    drawSprite(look.name, h.x, h.y - bob, hh, { flip: h.face < 0, squash: h.attackT > 0 ? 0.06 : 0, flash: h.hurtT > 0.15, alpha: down ? 0.8 : 1 });
+    if (look.tool && !down) drawTool(h, look.tool, h.x, h.y - bob);
+    ctx.restore();
+    if (down) { ctx.font = '16px serif'; ctx.textAlign = 'center'; ctx.fillText('💦', h.x + 20, h.y - hh + 4); }
+    if (h.maxHp) hpBar(h, h.y - hh - 12, 40);
+    drawSay(h, h.y - hh - (h.maxHp ? 18 : 8));
+    return;
+  }
   let name, downImg = false;
-  if (h.type === 'archer') { drawTower(h); return; }
   if (h.type === 'sword') {
     // モブの斧の助っ人：3色の色違い（攻撃・ダウンの絵は共通）
     const base = pick(['mob_axe', 'mob_axe_g', 'mob_axe_r'][h.n % 3], 'mob_axe', 'swordsman', 'helper_hunter');
@@ -1606,13 +1853,16 @@ function drawHelper(h) {
     rot: down && !downImg ? Math.PI / 2 * 0.9 : 0, alpha: down ? 0.85 : 1,
   });
   ctx.restore();
-  if (down) dizzy(h.x, h.y - 50);
-  else hpBar(h, h.y - 88, 44);
+  if (h.maxHp) hpBar(h, h.y - 80, 40);
+  drawSay(h, h.y - 88);
 }
 
 // 見張り台と、その上の弓使い
+// h が null なら、まだ誰も上っていない見張り台だけを描く
 function drawTower(h) {
-  const x = h.x, y = h.y, sc = popScale(h);
+  const T = G.tower;
+  T.pop = Math.min(1, (T.pop == null ? 1 : T.pop) + 1 / 40);
+  const x = T.x, y = T.y, sc = popScale(T);
   ctx.save();
   ctx.translate(x, y); ctx.scale(sc, sc); ctx.translate(-x, -y);
   const top = 118;   // 足場の高さ
@@ -1631,8 +1881,13 @@ function drawTower(h) {
     roundRect(x - 44, y - top - 11, 88, 6, 3); ctx.fill();
   }
   const bob = Math.sin(G.time * 2);
-  drawSprite(pick('archer_aim', 'helper_hunter'), x, y - top + 4 + bob, 62, { flip: h.face < 0, squash: h.attackT > 0 ? 0.06 : 0 });
+  if (h && h.kind) {
+    const look = helperLook(h);
+    drawSprite(look.name, x, y - top + 4 + bob, helperH(h) * 0.92, { flip: h.face < 0 });
+    if (look.tool) drawTool(h, look.tool, x, y - top + 4 + bob);
+  } else if (h) drawSprite(pick('archer_aim', 'helper_hunter'), x, y - top + 4 + bob, 62, { flip: h.face < 0, squash: h.attackT > 0 ? 0.06 : 0 });
   ctx.restore();
+  if (h) drawSay(h, y - top - 70);
 }
 
 function drawFire() {

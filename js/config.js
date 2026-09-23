@@ -42,17 +42,28 @@ const CONFIG = {
     sword: { speed: 155, damage: 1, attackCd: 0.45, reach: 85, cap: 8, hp: 50, pickup: 90, max: 8 },   // 斧の助っ人（モブ）：戦って肉を集め、いっぱいになったらグリルへ
     archer: { range: 330, damage: 1, attackCd: 0.9, post: { x: 120, y: 650 } },   // 弓使い：見張り台の上から矢を射る（外には出ない）
     carrier: { speed: 170, cap: 6 },
-    downSec: 6,              // 倒れてから起き上がるまでの秒数
+    downSec: 10,             // 疲れてテントで休む秒数（休んだらまた戻ってくる）
+    home: { x: 80, y: 1290 },   // 休みに帰るテント
+  },
+
+  // ---- 助っ人の志願：肉をもらった村人がときどき「手伝わせて！」と残ってくれる ----
+  volunteer: {
+    first: 2,                // 最初の志願者は何人目に救った人か
+    every: 5,                // そのあとは何人ごとに志願者が出るか
+    spot: { x: 330, y: 1150 },   // 志願者が待っている場所
+    max: { sword: 8, carrier: 3, archer: 1 },   // 役割ごとの最大人数（弓は見張り台の数）
   },
 
   // ---- 戦闘：白クマも攻撃してくる ----
   combat: {
-    aggro: 140,              // この距離に入ると白クマが追いかけてくる
+    aggro: 105,              // この距離に入ると白クマが追いかけてくる
+    angryAggro: 230,         // 攻撃された白クマは遠くからでも追いかけてくる（angrySec 秒のあいだ）
+    angrySec: 5,
     chaseSpeed: 72,
     reach: 62,               // 攻撃が届く距離
     windup: 0.6,             // 攻撃の前の「ため」（この間に逃げればよけられる）
     cooldown: 1.4,
-    damage: 12,              // 白クマの攻撃力（村の bearHp 倍率がかかる）
+    damage: 8,               // 白クマの攻撃力（村の bearHp 倍率がかかる）
     boss: { windup: 0.9, reach: 100, damageMul: 2.5 },
     regenDelay: 2,           // 攻撃を受けてから回復が始まるまでの秒数
     downSec: 2.5,            // 主人公が倒れてからキャンプで起き上がるまで
@@ -72,9 +83,7 @@ const CONFIG = {
   unlocks: [
     { id: 'grill2', label: 'グリル2台目', price: 25, x: 205, y: 1060 },
     { id: 'barricade', label: 'バリケード（白クマを防ぐ）', price: 45, x: 460, y: 690 },
-    { id: 'hunter', label: '斧の助っ人 ×2', price: 90, x: 330, y: 690 },
-    { id: 'carrier', label: '運び係', price: 140, x: 330, y: 930 },
-    { id: 'archer', label: '見張り台と弓使い', price: 200, x: 120, y: 690 },
+    { id: 'tower', label: '見張り台', price: 160, x: 120, y: 690 },
     { id: 'counter2', label: '配給台2つ目', price: 280, x: 610, y: 980 },
     { id: 'fire', label: 'キャンプファイヤー', price: 380, x: 330, y: 1270 },
     { id: 'huntArea', label: '狩り場拡張（ボス出現）', price: 500, x: 560, y: 660 },
@@ -98,7 +107,6 @@ const CONFIG = {
   // リストを全部解放したあとは、何度でも買える強化が順番に出てくる（値段はだんだん上がる）
   repeatUnlocks: [
     { id: 'moreBears', label: '白クマ +1', base: 700, x: 330, y: 690 },
-    { id: 'moreAxe', label: '斧の助っ人 +1', base: 450, x: 250, y: 690 },
   ],
   repeatGrowth: 1.35,        // 買うたびに値段が何倍になるか
 
@@ -123,6 +131,10 @@ const CONFIG = {
     coin: '🪙', hand: '👆',
   },
 
+  // 村人の見た目の種類（画像が届いているものだけ使う）。villager_n01〜 は追加で作った村人
+  villagers: ['villager_m', 'villager_f', 'villager_child', 'villager_old_m', 'villager_old_f', 'villager_girl', 'villager_fisher', 'villager_mother']
+    .concat(Array.from({ length: 36 }, (_, i) => 'villager_n' + String(i + 1).padStart(2, '0'))),
+
   // 飾り（木・岩・テントなど）の配置 [名前, x, y, 高さ]
   decor: [
     ['pine', 20, 60, 110], ['pine', 700, 90, 120], ['pine', 30, 330, 100], ['pine', 700, 380, 110],
@@ -131,3 +143,6 @@ const CONFIG = {
     ['pine', 20, 1150, 100], ['pine', 705, 1180, 100],
   ],
 };
+
+// 追加の村人も読み込む（画像が無ければ使われない）
+CONFIG.villagers.forEach(k => { if (!CONFIG.sprites[k]) CONFIG.sprites[k] = '🥶'; });

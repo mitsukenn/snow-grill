@@ -23,7 +23,7 @@ const CHARS = {
 // priceMul: 設備の値段の倍率、want: お客さんが欲しがる肉の数、snow: 雪の量、tint: 地面に重ねる色
 const VILLAGES = [
   {
-    id: 'camp', name: 'はじまりの雪原キャンプ', goal: 25,
+    id: 'camp', name: 'はじまりの雪原キャンプ', goal: 40,
     map: { x: 28, y: 84 }, bearHp: 1, meatBonus: 0, extraBears: 0, priceMul: 1, want: [1, 3], snow: 60, tint: null,
     intro: [
       ['narr', '百年に一度の大寒波が、北の大地をおそった――'],
@@ -39,7 +39,7 @@ const VILLAGES = [
     ],
   },
   {
-    id: 'lake', name: '凍った湖の村', goal: 45,
+    id: 'lake', name: '凍った湖の村', goal: 70,
     map: { x: 70, y: 68 }, bearHp: 1.4, meatBonus: 1, extraBears: 0, priceMul: 1.4, want: [1, 3], snow: 80, tint: 'rgba(110,170,255,.12)',
     intro: [
       ['mira', '湖が凍って、魚が一匹もとれないの…みんなおなかをすかせてる。'],
@@ -53,7 +53,7 @@ const VILLAGES = [
     ],
   },
   {
-    id: 'pass', name: '吹雪の峠', goal: 70,
+    id: 'pass', name: '吹雪の峠', goal: 110,
     map: { x: 30, y: 50 }, bearHp: 1.8, meatBonus: 1, extraBears: 1, priceMul: 1.9, want: [2, 4], snow: 170, tint: 'rgba(200,215,240,.18)',
     intro: [
       ['narr', '吹雪がやまない峠。前も見えないほどの雪が降っている…'],
@@ -68,7 +68,7 @@ const VILLAGES = [
     ],
   },
   {
-    id: 'port', name: '氷河の港町', goal: 100,
+    id: 'port', name: '氷河の港町', goal: 160,
     map: { x: 70, y: 32 }, bearHp: 2.3, meatBonus: 2, extraBears: 1, priceMul: 2.5, want: [2, 4], snow: 100, tint: 'rgba(90,150,220,.14)',
     boss: true,
     intro: [
@@ -83,7 +83,7 @@ const VILLAGES = [
     ],
   },
   {
-    id: 'capital', name: '北の果ての王都', goal: 150,
+    id: 'capital', name: '北の果ての王都', goal: 240,
     map: { x: 42, y: 13 }, bearHp: 3, meatBonus: 3, extraBears: 2, priceMul: 3.2, want: [2, 5], snow: 130, tint: 'rgba(150,130,220,.12)',
     boss: true,
     intro: [
