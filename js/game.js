@@ -938,8 +938,11 @@ function roleOpen(type) {
 
 function maybeVolunteer(cu) {
   const V = CONFIG.volunteer;
-  if (G.volunteer || !ROLES.some(r => roleOpen(r.type))) return;
-  if (G.rescued !== V.first && (G.rescued - V.first) % V.every !== 0) return;
+  if (G.volunteer) return;
+  // 決まった人数ごとに「志願者の番」が来て、その番のあとで役割に空きのある人が申し出る
+  if (G.rescued === V.first || (G.rescued - V.first) % V.every === 0) G.volTurn = true;
+  if (!G.volTurn || !ROLES.some(r => roleOpen(r.type))) return;
+  G.volTurn = false;
   cu.state = 'volunteer';
   cu.kind = cu.baseKind;
   G.volunteer = cu;
@@ -968,6 +971,7 @@ function openRecruit(cu) {
   $('recruit-text').textContent = VOL_LINES[voice][randInt(0, VOL_LINES[voice].length - 1)];
   const box = $('recruit-choices');
   box.innerHTML = '';
+  // 役割を選ぶ（選んだ役割に合わせて見た目が変わる）
   ROLES.forEach(r => {
     const b = document.createElement('button');
     const open = roleOpen(r.type);
@@ -1000,9 +1004,8 @@ function recruit(cu, type) {
   const h = makeHelper(type);
   if (type !== 'archer') { h.x = cu.x; h.y = cu.y; }
   h.pop = 0;
-  h.kind = cu.kind;   // 志願した村人の見た目のまま助っ人になる
-  G.helpers.push(h);
-  G.vs.crew.push({ type, kind: cu.kind });
+  G.helpers.push(h);   // 見た目は役割ごとの服装になる（斧の戦士・運び係・弓使い）
+  G.vs.crew.push({ type });
   cu.gone = true;
   G.volunteer = null;
   sparks(h.x, h.y - 40, 24, ['#ffd23f', '#fff', '#7fe0ff']);
@@ -1153,6 +1156,7 @@ function updateFx(dt) {
   G.snow.forEach(s => { s.y += s.v * dt / 800; s.x += Math.sin(G.time + s.v) * dt * 0.01; if (s.y > 1) { s.y = 0; s.x = Math.random(); } });
   G.shake = Math.max(0, G.shake - dt * 40);
   G.flash = Math.max(0, G.flash - dt);
+  G.guideT = (G.guideT || 0) - dt;
   if (G.pad) G.pad.pulse += dt;
 }
 G.coinFly = [];
@@ -1283,6 +1287,10 @@ function update(dt) {
   const text = goal ? goal.text : '';
   if (guide.dataset.text !== text) {
     guide.dataset.text = text;
+    // 同じ指示はしばらく出さない（慣れた作業の指示がずっと出ていると邪魔なので）。最初の解放までは毎回出す
+    G.guideSeen = G.guideSeen || {};
+    const last = G.guideSeen[text];
+    if (G.unlockIdx < 1 || last == null || G.time - last > 60) { G.guideT = 3.5; G.guideSeen[text] = G.time; }
     const m = text.match(/^(\S+)\s+(.*)$/);
     const icon = m && GUIDE_ICONS[m[1]];
     guide.innerHTML = icon ? `<span class="g-ico"><img src="${IMG(icon)}" alt=""></span><span class="g-txt">${m[2]}</span>` : `<span class="g-txt">${text}</span>`;
@@ -1290,7 +1298,7 @@ function update(dt) {
     void guide.offsetWidth;
     guide.classList.add('pop');
   }
-  guide.classList.toggle('hidden', !goal);
+  guide.classList.toggle('hidden', !goal || !(G.guideT > 0));
   G.goal = goal;
 }
 
@@ -1567,7 +1575,9 @@ function drawGrill(g) {
   ctx.scale(sc, sc);
   drawSprite(g.raw > 0 ? 'grill_on' : 'grill_off', 0, 0, 92);
   ctx.restore();
-  // 置いてある生肉・焼けた肉の山
+  // 置いてある生肉・焼けた肉の山（生肉はまな板、焼けた肉は大皿の上）
+  drawBoard(g.inPad.x, g.inPad.y);
+  drawPlatter(g.outPad.x, g.outPad.y);
   pileAt('meat_raw', g.inPad.x, g.inPad.y, g.raw);
   pileAt('meat_cooked', g.outPad.x, g.outPad.y, g.cooked);
   if (g.raw > 0) {
@@ -1579,12 +1589,46 @@ function drawGrill(g) {
   }
 }
 
+// 生肉を置く木のまな板（丸太の脚つき）
+function drawBoard(x, y) {
+  ctx.save();
+  ctx.fillStyle = 'rgba(40,70,110,.22)';
+  ctx.beginPath(); ctx.ellipse(x, y + 12, 36, 9, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#6b4020';
+  [-22, 22].forEach(dx => { roundRect(x + dx - 5, y - 2, 10, 14, 3); ctx.fill(); });
+  ctx.fillStyle = '#8a5a2b';
+  roundRect(x - 34, y - 8, 68, 12, 5); ctx.fill();
+  ctx.fillStyle = '#c48a52';
+  roundRect(x - 34, y - 14, 68, 10, 5); ctx.fill();
+  ctx.strokeStyle = 'rgba(110,60,20,.35)'; ctx.lineWidth = 1;
+  [-12, 10].forEach(dx => { ctx.beginPath(); ctx.moveTo(x + dx, y - 13); ctx.lineTo(x + dx + 4, y - 5); ctx.stroke(); });
+  ctx.fillStyle = '#fff';
+  roundRect(x - 30, y - 16, 16, 4, 2); ctx.fill();
+  ctx.restore();
+}
+
+// 焼けた肉をのせる大皿（銅のトレー）
+function drawPlatter(x, y) {
+  ctx.save();
+  ctx.fillStyle = 'rgba(40,70,110,.22)';
+  ctx.beginPath(); ctx.ellipse(x, y + 8, 38, 10, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#9c5a2a';
+  ctx.beginPath(); ctx.ellipse(x, y - 2, 36, 13, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#e0a15e';
+  ctx.beginPath(); ctx.ellipse(x, y - 5, 33, 11, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#f3c27f';
+  ctx.beginPath(); ctx.ellipse(x, y - 5, 25, 7.5, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.55)';
+  ctx.beginPath(); ctx.ellipse(x - 14, y - 9, 8, 2.5, -0.2, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
 function pileAt(name, x, y, n) {
   if (!n) return;
   const shown = Math.min(n, 12);
   for (let i = 0; i < shown; i++) {
     const col = i % 3, row = Math.floor(i / 3);
-    drawSprite(name, x - 14 + col * 14, y + 4 - row * 9, 24);
+    drawSprite(name, x - 14 + col * 14, y - 6 - row * 9, 24);
   }
   if (n > 1) {
     ctx.font = '900 14px "Hiragino Sans",sans-serif';

@@ -132,8 +132,11 @@ const CONFIG = {
   },
 
   // 村人の見た目の種類（画像が届いているものだけ使う）。villager_n01〜 は追加で作った村人
-  villagers: ['villager_m', 'villager_f', 'villager_child', 'villager_old_m', 'villager_old_f', 'villager_girl', 'villager_fisher', 'villager_mother']
-    .concat(Array.from({ length: 36 }, (_, i) => 'villager_n' + String(i + 1).padStart(2, '0'))),
+  // 並ぶ人は特徴の少ない「モブ」3種だけ（助っ人になると役割の服装に変わる）。
+  // 個性のある村人（villager_old_m・villager_n01〜 など）は画像だけ用意してあり、今は使っていない
+  villagers: ['villager_m', 'villager_f', 'villager_child'],
+  extraVillagers: ['villager_old_m', 'villager_old_f', 'villager_girl', 'villager_fisher', 'villager_mother']
+    .concat(Array.from({ length: 18 }, (_, i) => 'villager_n' + String(i + 1).padStart(2, '0'))),
 
   // 飾り（木・岩・テントなど）の配置 [名前, x, y, 高さ]
   decor: [
