@@ -11,13 +11,16 @@
 
 ## 構成
 
-- 素の HTML / CSS / JavaScript。Canvas 2D で描画。`<script>` は config → audio → game の順。
+- 素の HTML / CSS / JavaScript。Canvas 2D で描画。`<script>` は config → audio → story → game の順。村とストーリーは `js/story.js`。
 - 座標はワールド座標（720 × 1400、y が大きいほど手前）。`CONFIG.viewWidth` ぶんを画面の横幅に映し、カメラがプレイヤーを追う。
 - 描画は y の小さい順（奥から手前）。`drawSprite(名前, x, y, 高さ)` は足元基準。画像が無ければ `CONFIG.sprites` の絵文字で描く。
 - 肉の受け渡しは `interactStations()`（プレイヤーと運び係で共通）。背中の肉は `stack`（'raw' か 'cooked'、混ぜて持てない）。
 - 解放は `CONFIG.unlocks` の順に1つずつ。効果は `applyUnlock()`。セーブにはお金・救った人数・解放した数だけを保存し、ロード時に `applyUnlock` を当て直す。
 - 次にやることのガイド（上の吹き出し＋黄色い矢印）は `currentGoal()`。
-- セーブは localStorage（キー `snowGrill.v1`）。`?reset` で消去。
+- セーブは localStorage（キー `snowGrill.v2`、村ごとに解放数・救った人数・仲間 `crew: [{type, kind}]`）。`?reset` で消去。
+- 戦闘：白クマは近づく（または攻撃される）と追いかけ、「ため」（赤い円）→ひっかき。数値は `CONFIG.combat`。
+- 助っ人は解放ではなく「志願者」から仲間になる（`CONFIG.volunteer`、`maybeVolunteer()` / `openRecruit()`）。見た目は志願した村人の `kind`。
+- 時間差の処理に setTimeout は使わない（ボットの高速シミュレーションで動かなくなる）。ゲーム内時間で数える。
 
 ## 画像
 

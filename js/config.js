@@ -39,7 +39,7 @@ const CONFIG = {
   },
 
   helper: {
-    sword: { speed: 155, damage: 1, attackCd: 0.45, reach: 85, cap: 8, hp: 50, pickup: 90, max: 8 },   // 斧の助っ人（モブ）：戦って肉を集め、いっぱいになったらグリルへ
+    sword: { speed: 145, damage: 1, attackCd: 0.55, reach: 85, cap: 6, hp: 40, pickup: 90, max: 8 },   // 斧の助っ人（モブ）：戦って肉を集め、いっぱいになったらグリルへ
     archer: { range: 330, damage: 1, attackCd: 0.9, post: { x: 120, y: 650 } },   // 弓使い：見張り台の上から矢を射る（外には出ない）
     carrier: { speed: 170, cap: 6 },
     downSec: 10,             // 疲れてテントで休む秒数（休んだらまた戻ってくる）
@@ -48,10 +48,10 @@ const CONFIG = {
 
   // ---- 助っ人の志願：肉をもらった村人がときどき「手伝わせて！」と残ってくれる ----
   volunteer: {
-    first: 2,                // 最初の志願者は何人目に救った人か
-    every: 5,                // そのあとは何人ごとに志願者が出るか
+    first: 3,                // 最初の志願者は何人目に救った人か
+    every: 8,                // そのあとは何人ごとに志願者が出るか
     spot: { x: 330, y: 1150 },   // 志願者が待っている場所
-    max: { sword: 8, carrier: 3, archer: 1 },   // 役割ごとの最大人数（弓は見張り台の数）
+    max: { sword: 4, carrier: 2, archer: 1 },   // 多すぎると楽になりすぎるので控えめに   // 役割ごとの最大人数（弓は見張り台の数）
   },
 
   // ---- 戦闘：白クマも攻撃してくる ----
