@@ -743,24 +743,34 @@ function unlockPad() {
 function interactStations(who, dt, rate, cap, isPlayer) {
   who.xferT = (who.xferT || 0) - dt;
   if (who.xferT > 0) return;
+  if (!isPlayer) {
+    // 助っ人は台に乗ったら、置ける分・持てる分をまとめて一気に受け渡す
+    let n = 0;
+    while (n < 60 && transferOnce(who, cap, false)) n++;
+    if (n) who.xferT = 0.3;
+    return;
+  }
+  if (transferOnce(who, cap, true)) who.xferT = rate;
+}
+
+// 1個だけ受け渡す。受け渡したら true
+function transferOnce(who, cap, isPlayer) {
   for (const g of G.grills) {
     // 生肉をグリルに置く
     if (who.stack[0] === 'raw' && g.raw < stat('grillCap') && dist(who, g.inPad) < 48) {
       who.stack.pop();
       g.raw++;
-      who.xferT = rate;
       fly('meat_raw', { x: who.x, y: who.y - 50 }, { x: g.inPad.x, y: g.inPad.y - 10 });
       if (isPlayer) Sound.sfx.drop(g.raw);
-      return;
+      return true;
     }
     // 焼けた肉を取る
     if (g.cooked > 0 && canCarry(who, 'cooked', cap) && dist(who, g.outPad) < 48) {
       g.cooked--;
       who.stack.push('cooked');
-      who.xferT = rate;
       fly('meat_cooked', { x: g.outPad.x, y: g.outPad.y - 10 }, { x: who.x, y: who.y - 50 });
       if (isPlayer) Sound.sfx.pick(who.stack.length);
-      return;
+      return true;
     }
   }
   for (const c of G.counters) {
@@ -768,12 +778,12 @@ function interactStations(who, dt, rate, cap, isPlayer) {
     if (who.stack[0] === 'cooked' && c.stock < stat('counterCap') && dist(who, c.servePad) < 48) {
       who.stack.pop();
       c.stock++;
-      who.xferT = rate;
       fly('meat_cooked', { x: who.x, y: who.y - 50 }, { x: c.x, y: c.y - 40 });
       if (isPlayer) Sound.sfx.drop(c.stock);
-      return;
+      return true;
     }
   }
+  return false;
 }
 
 // ============================================================
@@ -898,7 +908,9 @@ function updateHelpers(dt) {
       const loose = G.drops.filter(m => m.state === 'ground' && m.y < 700);
       h.idleT = !bears.length && !loose.length ? h.idleT + dt : 0;
       if (h.stack.length >= H.cap || (h.stack.length && h.idleT > 2.5)) {
-        const g = G.grills.slice().sort((a, b) => dist(h, a.inPad) - dist(h, b.inPad))[0];
+        // 空きのあるグリルを優先（近い順）
+        const full = g => g.raw >= stat('grillCap');
+        const g = G.grills.slice().sort((a, b) => full(a) - full(b) || dist(h, a.inPad) - dist(h, b.inPad))[0];
         if (moveTo(h, g.inPad, H.speed, dt) || dist(h, g.inPad) < 40) interactStations(h, dt, 0.08, H.cap, false);
       } else if (loose.length && (!bears.length || h.stack.length === 0 && dist(h, loose[0]) < 120)) {
         moveTo(h, loose.sort((a, b) => dist(h, a) - dist(h, b))[0], H.speed, dt);
