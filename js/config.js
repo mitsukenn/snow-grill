@@ -46,7 +46,10 @@ const CONFIG = {
   // ---- マップ ----
   hunt: { x: 40, y: 80, w: 640, h: 500 },           // 白クマが歩き回る狩り場
   bossHunt: { x: 40, y: 80, w: 640, h: 500 },
-  playerStart: { x: 300, y: 820 },
+  playerStart: { x: 330, y: 640 },                   // 狩り場のすぐ手前から始める
+  firstBear: { x: 330, y: 545 },                     // 最初の白クマはすぐ近くに
+  dropLife: 25,              // 拾われなかった肉が消えるまでの秒数
+  dropMax: 40,               // 地面に落ちている肉の最大数（超えたら古いものから消える）
   grills: [{ x: 205, y: 860 }, { x: 205, y: 1060 }],
   counters: [{ x: 470, y: 980 }, { x: 610, y: 980 }],
 
@@ -58,10 +61,17 @@ const CONFIG = {
     { id: 'carrier', label: '運び係', price: 140, x: 330, y: 930 },
     { id: 'axe', label: '斧を強化', price: 200, x: 110, y: 680 },
     { id: 'counter2', label: '配給台2つ目', price: 280, x: 610, y: 980 },
-    { id: 'fire', label: 'キャンプファイヤー', price: 380, x: 470, y: 1260 },
+    { id: 'fire', label: 'キャンプファイヤー', price: 380, x: 330, y: 1270 },
     { id: 'huntArea', label: '狩り場拡張（ボス出現）', price: 500, x: 560, y: 660 },
     { id: 'backpack2', label: 'バックパック +8', price: 650, x: 330, y: 1180 },
   ],
+  // リストを全部解放したあとは、何度でも買える強化が順番に出てくる（値段はだんだん上がる）
+  repeatUnlocks: [
+    { id: 'cookSpeed', label: '焼く速さ UP', base: 500, x: 205, y: 960 },
+    { id: 'payUp', label: '支払い UP', base: 600, x: 540, y: 1180 },
+    { id: 'moreBears', label: '白クマ +1', base: 700, x: 330, y: 680 },
+  ],
+  repeatGrowth: 1.35,        // 買うたびに値段が何倍になるか
 
   // ---- 見た目（ChatGPT で作った素材。無ければ絵文字で表示） ----
   sprites: {

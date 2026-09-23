@@ -81,7 +81,7 @@ function persist() {
 let canvas, ctx, groundPattern = null;
 const G = {
   money: 0, rescued: 0, unlockIdx: 0, kills: 0, muted: false,
-  maxBears: CONFIG.bear.max, bossOn: false, fire: false,
+  maxBears: CONFIG.bear.max, bossOn: false, fire: false, cookMul: 1, payBonus: 0,
   player: null, bears: [], drops: [], grills: [], counters: [], customers: [], helpers: [],
   flyers: [], texts: [], parts: [], snow: [], steps: [],
   pad: null, spawnT: 0, bearT: 0, shake: 0, time: 0,
@@ -104,10 +104,24 @@ function makeHelper(type) {
 }
 
 // 解放したときの効果（ロード時にも順番に当て直す）
+// i 番目の解放。リストの後は「何度でも買える強化」を順番に繰り返し、値段はだんだん上がる
+function unlockAt(i) {
+  const list = CONFIG.unlocks;
+  if (i < list.length) return list[i];
+  const rep = CONFIG.repeatUnlocks;
+  const n = i - list.length;
+  const r = rep[n % rep.length];
+  const lv = Math.floor(n / rep.length);
+  return { ...r, label: `${r.label} Lv${lv + 1}`, price: Math.round(r.base * Math.pow(CONFIG.repeatGrowth, lv)) };
+}
+
 function applyUnlock(id, fromSave) {
-  const u = CONFIG.unlocks.find(x => x.id === id);
+  const u = CONFIG.unlocks.find(x => x.id === id) || CONFIG.repeatUnlocks.find(x => x.id === id);
   let made = null;   // 新しく置いた設備・助っ人（ポンと出てくる演出用）
   switch (id) {
+    case 'cookSpeed': G.cookMul *= 0.85; break;
+    case 'payUp': G.payBonus += 1; break;
+    case 'moreBears': G.maxBears = Math.min(8, G.maxBears + 1); break;
     case 'grill2': made = makeGrill(CONFIG.grills[1]); G.grills.push(made); break;
     case 'backpack': G.player.cap += 6; break;
     case 'backpack2': G.player.cap += 8; break;
@@ -122,8 +136,7 @@ function applyUnlock(id, fromSave) {
 }
 
 function nextPad() {
-  const u = CONFIG.unlocks[G.unlockIdx];
-  G.pad = u ? { ...u, paid: 0, payT: 0, pulse: 0 } : null;
+  G.pad = { ...unlockAt(G.unlockIdx), paid: 0, payT: 0, pulse: 0 };
 }
 
 function init() {
@@ -142,10 +155,12 @@ function init() {
   G.money = s.money || 0;
   G.rescued = s.rescued || 0;
   G.kills = s.kills || 0;
-  G.unlockIdx = Math.min(s.unlockIdx || 0, CONFIG.unlocks.length);
-  for (let i = 0; i < G.unlockIdx; i++) applyUnlock(CONFIG.unlocks[i].id, true);
+  G.unlockIdx = s.unlockIdx || 0;
+  for (let i = 0; i < G.unlockIdx; i++) applyUnlock(unlockAt(i).id, true);
   nextPad();
   for (let i = 0; i < G.maxBears; i++) spawnBear(false);
+  // はじめて遊ぶときは、すぐ目の前に白クマを置いて、いきなり戦えるように
+  if (!G.unlockIdx && !G.rescued) Object.assign(G.bears[0], { x: CONFIG.firstBear.x, y: CONFIG.firstBear.y, tx: CONFIG.firstBear.x, ty: CONFIG.firstBear.y, t: 4 });
   for (let i = 0; i < 70; i++) G.snow.push({ x: Math.random(), y: Math.random(), s: rand(1, 3), v: rand(20, 50) });
 
   setupInput();
@@ -300,7 +315,10 @@ function updateBears(dt) {
 // ============================================================
 function dropMeat(x, y) {
   const ang = rand(0, Math.PI * 2), sp = rand(60, 150);
-  G.drops.push({ x, y, z: 30, vz: rand(180, 260), vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp * 0.6, state: 'pop', holder: null, t: 0 });
+  G.drops.push({ x, y, z: 30, vz: rand(180, 260), vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp * 0.6, state: 'pop', holder: null, t: 0, age: 0 });
+  // 地面の肉が多すぎたら古いものから消す
+  const ground = G.drops.filter(d => d.state === 'ground');
+  if (ground.length > CONFIG.dropMax) ground.slice(0, ground.length - CONFIG.dropMax).forEach(d => { d.state = 'done'; });
 }
 
 function canCarry(who, kind, cap) {
@@ -314,6 +332,8 @@ function updateDrops(dt) {
       if (m.z <= 0) { m.z = 0; m.vz = 0; m.state = 'ground'; m.t = 0.25; }
     } else if (m.state === 'ground') {
       m.t -= dt;
+      m.age += dt;
+      if (m.age > CONFIG.dropLife) { m.state = 'done'; return; }   // 拾われない肉は消える
       if (m.t > 0) return;
       // 近くにいる人（プレイヤー・ハンター）が拾う
       const takers = [{ o: G.player, cap: G.player.cap, r: CONFIG.player.pickupRange }]
@@ -473,7 +493,7 @@ function updateGrills(dt) {
     if (g.raw > 0 && g.cooked < CONFIG.grill.outCap) {
       g.t += dt;
       if (Math.random() < dt * 6) G.parts.push({ x: g.x + rand(-20, 20), y: g.y - 60, vx: rand(-8, 8), vy: rand(-40, -25), t: 1.2, life: 1.2, kind: 'smoke' });
-      if (g.t >= CONFIG.grill.cookSec) {
+      if (g.t >= CONFIG.grill.cookSec * G.cookMul) {
         g.t = 0;
         g.raw--;
         g.cooked++;
@@ -516,7 +536,7 @@ function updateCustomers(dt) {
         fly('meat_cooked', { x: c.x, y: c.y - 40 }, { x: front.x, y: front.y - 50 }, 24, 0.22);
         if (front.got >= front.want) {
           // お金を払って、笑顔で帰る
-          const pay = front.want * (C.price + (G.fire ? 2 : 0));
+          const pay = front.want * (C.price + (G.fire ? 2 : 0) + G.payBonus);
           c.cash += pay;
           for (let i = 0; i < Math.min(6, front.want * 2); i++) {
             fly('coin', { x: front.x, y: front.y - 40 }, { x: c.cashPos.x + rand(-12, 12), y: c.cashPos.y - 6 }, 16, 0.35);
@@ -906,7 +926,7 @@ function drawGrill(g) {
     ctx.fillStyle = 'rgba(0,0,0,.35)';
     roundRect(g.x - 30, g.y - 104, 60, 8, 4); ctx.fill();
     ctx.fillStyle = '#ff9a3b';
-    roundRect(g.x - 30, g.y - 104, 60 * (g.t / CONFIG.grill.cookSec), 8, 4); ctx.fill();
+    roundRect(g.x - 30, g.y - 104, 60 * (g.t / (CONFIG.grill.cookSec * G.cookMul)), 8, 4); ctx.fill();
   }
 }
 
@@ -950,7 +970,8 @@ function drawCustomer(cu) {
   shadow(cu.x, cu.y, 18);
   drawSprite(cu.kind, cu.x + jx, cu.y - bob, cu.kind === 'villager_child' ? 56 : 70, { flip: cu.face < 0 });
   // 吹き出し：あと何個ほしいか
-  if (cold && cu.slot && dist(cu, cu.slot) < 30) {
+  // 吹き出しは列の先頭2人だけ（多いとごちゃごちゃするので）
+  if (cold && cu.slot && dist(cu, cu.slot) < 30 && cu.counter.queue.indexOf(cu) < 2) {
     const left = cu.want - cu.got;
     const bx = cu.x, by = cu.y - 92;
     ctx.fillStyle = 'rgba(255,255,255,.95)';
@@ -986,7 +1007,10 @@ function drawBear(b) {
 
 function drawDrop(m) {
   shadow(m.x, m.y, 10);
-  drawSprite('meat_raw', m.x, m.y - m.z, 28, { rot: m.state === 'pop' ? G.time * 12 : 0 });
+  // 消える前の3秒は点滅しながら薄くなる
+  const left = CONFIG.dropLife - (m.age || 0);
+  const alpha = left < 3 ? (0.35 + 0.65 * (left / 3)) * (Math.sin(G.time * 16) > 0 ? 1 : 0.6) : 1;
+  drawSprite('meat_raw', m.x, m.y - m.z, 28, { rot: m.state === 'pop' ? G.time * 12 : 0, alpha });
 }
 
 function drawStack(o, baseY) {
