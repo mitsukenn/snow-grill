@@ -269,16 +269,33 @@ function resize() {
 // ============================================================
 //  入力：画面のどこでも押してドラッグ → その方向に歩く（バーチャルジョイスティック）
 // ============================================================
+// ・ドラッグ … その方向に歩き続ける（指を離すと止まる）
+// ・タップ（すぐ離す）… タップした場所まで自動で歩く
 function setupInput() {
   canvas.addEventListener('pointerdown', e => {
     canvas.setPointerCapture(e.pointerId);
-    G.joy = { sx: e.clientX, sy: e.clientY, x: e.clientX, y: e.clientY, id: e.pointerId };
+    G.joy = { sx: e.clientX, sy: e.clientY, x: e.clientX, y: e.clientY, id: e.pointerId, t0: performance.now(), moved: false };
     Sound.startBgm();
   });
   canvas.addEventListener('pointermove', e => {
-    if (G.joy && e.pointerId === G.joy.id) { G.joy.x = e.clientX; G.joy.y = e.clientY; }
+    if (G.joy && e.pointerId === G.joy.id) {
+      G.joy.x = e.clientX; G.joy.y = e.clientY;
+      if (Math.hypot(G.joy.x - G.joy.sx, G.joy.y - G.joy.sy) > 12) { G.joy.moved = true; G.moveTo = null; }
+    }
   });
-  const end = e => { if (G.joy && e.pointerId === G.joy.id) G.joy = null; };
+  const end = e => {
+    if (!G.joy || e.pointerId !== G.joy.id) return;
+    const j = G.joy;
+    G.joy = null;
+    if (e.type === 'pointerup' && !j.moved && performance.now() - j.t0 < 300) {
+      const r = canvas.getBoundingClientRect();
+      G.moveTo = {
+        x: clamp(G.cam.x + (e.clientX - r.left) / G.cam.scale, 20, CONFIG.world.w - 20),
+        y: clamp(G.cam.y + (e.clientY - r.top) / G.cam.scale, 60, CONFIG.world.h - 20),
+        t: 0,
+      };
+    }
+  };
   canvas.addEventListener('pointerup', end);
   canvas.addEventListener('pointercancel', end);
   window.addEventListener('keydown', e => { G.keys[e.key.toLowerCase()] = true; });
@@ -293,10 +310,17 @@ function inputDir() {
     const len = Math.hypot(dx, dy);
     if (len > 6) { mag = Math.min(1, len / 45); dx /= len; dy /= len; } else { dx = dy = 0; }
   }
+  // タップした場所へ向かう（ドラッグやキーを使ったら取り消し）
+  if (G.moveTo && !(G.joy && G.joy.moved)) {
+    const tdx = G.moveTo.x - G.player.x, tdy = G.moveTo.y - G.player.y;
+    const len = Math.hypot(tdx, tdy);
+    if (len < 8) G.moveTo = null;
+    else { dx = tdx / len; dy = tdy / len; mag = Math.min(1, len / 30); }
+  }
   const k = G.keys;
   const kx = (k.d || k.arrowright ? 1 : 0) - (k.a || k.arrowleft ? 1 : 0);
   const ky = (k.s || k.arrowdown ? 1 : 0) - (k.w || k.arrowup ? 1 : 0);
-  if (kx || ky) { const l = Math.hypot(kx, ky); dx = kx / l; dy = ky / l; mag = 1; }
+  if (kx || ky) { const l = Math.hypot(kx, ky); dx = kx / l; dy = ky / l; mag = 1; G.moveTo = null; }
   return { dx, dy, mag };
 }
 
@@ -801,8 +825,11 @@ function update(dt) {
   updateFx(dt);
   // カメラ：プレイヤーを追う
   const cam = G.cam;
-  const tx = clamp(G.player.x - G.viewW / 2, 0, CONFIG.world.w - G.viewW);
-  const ty = clamp(G.player.y - G.viewH * 0.55, 0, Math.max(0, CONFIG.world.h - G.viewH));
+  // 歩いている方向を少し先まで映す（ルックアヘッド）
+  G.lookX = (G.lookX || 0) + (G.player.vx * 0.35 - (G.lookX || 0)) * Math.min(1, dt * 2.5);
+  G.lookY = (G.lookY || 0) + (G.player.vy * 0.45 - (G.lookY || 0)) * Math.min(1, dt * 2.5);
+  const tx = clamp(G.player.x + G.lookX - G.viewW / 2, 0, CONFIG.world.w - G.viewW);
+  const ty = clamp(G.player.y + G.lookY - G.viewH * 0.55, 0, Math.max(0, CONFIG.world.h - G.viewH));
   cam.x += (tx - cam.x) * Math.min(1, dt * 6);
   cam.y += (ty - cam.y) * Math.min(1, dt * 6);
   const goal = currentGoal();
@@ -907,6 +934,7 @@ function render() {
     ctx.fillText(t.text, 0, 0);
     ctx.restore();
   });
+  drawMoveTarget();
   drawGoalArrow();
 
   // 画面に固定するもの（雪・ジョイスティック・お金の飛ぶ演出）
@@ -1192,6 +1220,21 @@ function drawFire() {
   drawSprite('campfire', f.x, f.y, 80 * flick);
   ctx.fillStyle = 'rgba(255,170,60,.12)';
   ctx.beginPath(); ctx.ellipse(f.x, f.y - 20, 110, 70, 0, 0, Math.PI * 2); ctx.fill();
+}
+
+// タップした目的地のマーカー（輪が縮みながら点滅）
+function drawMoveTarget() {
+  const m = G.moveTo;
+  if (!m) return;
+  m.t += 1 / 60;
+  const k = (G.time * 2) % 1;
+  ctx.save();
+  ctx.strokeStyle = `rgba(90,169,230,${0.9 - k * 0.6})`;
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.ellipse(m.x, m.y, 26 - k * 12, (26 - k * 12) * 0.5, 0, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = 'rgba(90,169,230,.25)';
+  ctx.beginPath(); ctx.ellipse(m.x, m.y, 12, 6, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
 }
 
 // 次の目的地を指す矢印（画面外なら画面の端に）
