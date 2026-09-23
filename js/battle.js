@@ -255,13 +255,13 @@ function drawFenceHp() {
   if (!G.barricade || !G.fenceMax) return;
   if (!G.battle && G.fenceHp >= G.fenceMax) return;   // ふつうの村では減ったときだけ
   drawRepairSpot();
-  const y = fenceY() + 16, w = 160, x = 360;
+  const y = fenceY() + 16, w = 200, x = 360;
   const r = G.fenceHp / G.fenceMax;
   ctx.fillStyle = 'rgba(0,0,0,.45)';
-  roundRect(x - w / 2 - 2, y - 2, w + 4, 12, 6); ctx.fill();
+  roundRect(x - w / 2 - 2, y - 2, w + 4, 16, 8); ctx.fill();
   ctx.fillStyle = r > 0.5 ? '#c48a52' : r > 0.25 ? '#ffb020' : '#ff4040';
-  roundRect(x - w / 2, y, w * r, 8, 4); ctx.fill();
-  ctx.font = '900 11px "Hiragino Sans",sans-serif';
+  roundRect(x - w / 2, y, w * r, 12, 6); ctx.fill();
+  ctx.font = '900 14px "Hiragino Sans",sans-serif';
   ctx.textAlign = 'center';
   ctx.fillStyle = '#fff';
   ctx.strokeStyle = 'rgba(40,20,0,.8)'; ctx.lineWidth = 3;
@@ -275,24 +275,30 @@ function drawBanner(W, H) {
   if (!bn) return;
   const age = bn.life - bn.t;
   const a = Math.min(1, age * 4, bn.t * 2);
-  const s = 1 + Math.max(0, 0.25 - age) * 1.6;
+  const s = age < 0.25 ? 1.6 - age / 0.25 * 0.6 + Math.sin(age / 0.25 * Math.PI) * 0.08 : 1;
   ctx.save();
   ctx.globalAlpha = a;
   ctx.translate(W / 2, H * 0.3);
   ctx.scale(s, s);
-  ctx.fillStyle = 'rgba(15,30,60,.72)';
-  ctx.fillRect(-W / 2, -38, W, bn.sub ? 76 : 56);
+  const bh = bn.sub ? 84 : 62;
+  const bg = ctx.createLinearGradient(0, -44, 0, bh - 44);
+  bg.addColorStop(0, 'rgba(20,40,80,.88)'); bg.addColorStop(1, 'rgba(10,22,48,.88)');
+  ctx.fillStyle = bg;
+  ctx.fillRect(-W / 2, -44, W, bh);
+  ctx.fillStyle = '#ffd23f';
+  ctx.fillRect(-W / 2, -44, W, 3);
+  ctx.fillRect(-W / 2, bh - 47, W, 3);
   ctx.textAlign = 'center';
-  ctx.font = '900 30px "Hiragino Sans",sans-serif';
+  ctx.font = '900 34px "Hiragino Sans",sans-serif';
   ctx.lineWidth = 6;
   ctx.strokeStyle = 'rgba(120,0,0,.9)';
   ctx.strokeText(bn.text, 0, 0);
   ctx.fillStyle = '#ffdf5b';
   ctx.fillText(bn.text, 0, 0);
   if (bn.sub) {
-    ctx.font = '800 14px "Hiragino Sans",sans-serif';
+    ctx.font = '800 15px "Hiragino Sans",sans-serif';
     ctx.fillStyle = '#fff';
-    ctx.fillText(bn.sub, 0, 26);
+    ctx.fillText(bn.sub, 0, 28);
   }
   ctx.restore();
 }

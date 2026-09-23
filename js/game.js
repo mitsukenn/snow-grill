@@ -403,14 +403,12 @@ function drawTerritory() {
   ctx.rect(-200, -200, W + 400, H + 400);
   roundRectPath(b.x0 - pad, b.y0 - pad, b.x1 - b.x0 + pad * 2, b.y1 - b.y0 + pad * 2, 40);
   ctx.fill('evenodd');
-  // さかいめの雪の土手
-  ctx.strokeStyle = 'rgba(255,255,255,.75)';
-  ctx.lineWidth = 7;
-  ctx.setLineDash([2, 14]);
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  roundRectPath(b.x0 - pad, b.y0 - pad, b.x1 - b.x0 + pad * 2, b.y1 - b.y0 + pad * 2, 40);
-  ctx.stroke();
+  // さかいめの雪の土手（影 → 白い帯 → ハイライト）
+  const edge = () => { ctx.beginPath(); roundRectPath(b.x0 - pad, b.y0 - pad, b.x1 - b.x0 + pad * 2, b.y1 - b.y0 + pad * 2, 40); };
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(60,90,130,.28)'; ctx.lineWidth = 18; ctx.translate(0, 5); edge(); ctx.stroke(); ctx.translate(0, -5);
+  ctx.strokeStyle = '#f4f9ff'; ctx.lineWidth = 14; edge(); ctx.stroke();
+  ctx.strokeStyle = 'rgba(200,220,245,.9)'; ctx.lineWidth = 3; ctx.setLineDash([10, 16]); edge(); ctx.stroke();
   ctx.restore();
 }
 function roundRectPath(x, y, w, h, r) {
@@ -1038,7 +1036,7 @@ function updateCustomers(dt) {
           }
           Sound.sfx.pay();
           Sound.sfx.happy();
-          floatText(front.x, front.y - 90, 'ありがとう！', '#fff', 20);
+          floatText(front.x, front.y - 92, '❤', '#ff5a7a', 28);
           front.state = 'leave';
           front.baseKind = front.kind;
           if (images[front.kind + '_happy']) front.kind += '_happy';   // 笑顔の絵がある人は笑顔に（無ければハートを出す）
@@ -1336,7 +1334,14 @@ function updateFx(dt) {
   G.steps.forEach(s => { s.t -= dt; });
   G.steps = G.steps.filter(s => s.t > 0);
   G.coinFly.forEach(c => { c.t += dt; });
+  if (G.coinFly.some(c => c.t >= 0.6)) bumpChip('money');   // 着いたらチップがぴょこっと
   G.coinFly = G.coinFly.filter(c => c.t < 0.6);
+  // 所持金の数字は、少しずつ数え上がる
+  if (G.moneyShown !== G.money) {
+    G.moneyShown = G.moneyShown == null ? G.money : G.moneyShown + (G.money - G.moneyShown) * Math.min(1, dt * 7);
+    if (Math.abs(G.money - G.moneyShown) < 0.6) G.moneyShown = G.money;
+    $('money').textContent = fmt(Math.round(G.moneyShown));
+  }
   G.snow.forEach(s => { s.y += s.v * dt / 800; s.x += Math.sin(G.time + s.v) * dt * 0.01; if (s.y > 1) { s.y = 0; s.x = Math.random(); } });
   G.shake = Math.max(0, G.shake - dt * 40);
   G.flash = Math.max(0, G.flash - dt);
@@ -1503,6 +1508,13 @@ function update(dt) {
   G.goal = goal;
 }
 
+function bumpChip(id) {
+  const chip = $(id).closest('.chip');
+  chip.classList.remove('bump');
+  void chip.offsetWidth;
+  chip.classList.add('bump');
+}
+
 function updateHud() {
   const bump = (id, v) => {
     const el = $(id);
@@ -1515,7 +1527,8 @@ function updateHud() {
     el.dataset.v = v;
     el.textContent = fmt(v);
   };
-  bump('money', G.money);
+  // 使ったときはすぐ減らす（増えるときは数え上げ）
+  if (G.moneyShown == null || G.money < G.moneyShown) { G.moneyShown = G.money; $('money').textContent = fmt(G.money); }
   $('up-btn').classList.toggle('ready', canAffordAnyUpgrade());
   bump('rescued', G.rescued);
   if (G.battle) battleHud();
@@ -1706,63 +1719,81 @@ function roundRect(x, y, w, h, r) {
 // 地面の丸いエリア（置く場所・取る場所・お金・解放パッド）
 function ring(x, y, r, color, icon, label) {
   ctx.save();
-  ctx.fillStyle = color.replace('A', '.18');
-  ctx.strokeStyle = color.replace('A', '.9');
-  ctx.lineWidth = 3;
-  ctx.setLineDash([8, 6]);
+  ctx.fillStyle = color.replace('A', '.28');
+  ctx.strokeStyle = color.replace('A', '1');
+  ctx.lineWidth = 4;
   ctx.beginPath(); ctx.ellipse(x, y, r, r * 0.55, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-  ctx.setLineDash([]);
-  if (icon) drawSprite(icon, x, y + 6, 22, { alpha: 0.55 });
+  ctx.strokeStyle = 'rgba(255,255,255,.8)';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.ellipse(x, y, r - 5, r * 0.55 - 4, 0, 0, Math.PI * 2); ctx.stroke();
+  if (icon) drawSprite(icon, x, y + 6, 28, { alpha: 0.9 });
   if (label) {
     ctx.font = '900 13px "Hiragino Sans","Yu Gothic UI",sans-serif';
     ctx.textAlign = 'center';
+    const w = ctx.measureText(label).width + 14;
+    const ly = y + r * 0.55 + 6;
     ctx.fillStyle = color.replace('A', '1');
-    ctx.fillText(label, x, y + r * 0.55 + 16);
+    roundRect(x - w / 2, ly, w, 19, 9.5); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.fillText(label, x, ly + 14);
   }
   ctx.restore();
 }
 
 function drawDecals() {
   G.grills.forEach(g => {
-    ring(g.inPad.x, g.inPad.y, 34, 'rgba(230,90,70,A)', null, '生肉を置く');
-    ring(g.outPad.x, g.outPad.y, 34, 'rgba(240,160,40,A)', null, '焼けた肉');
+    ring(g.inPad.x, g.inPad.y, 36, 'rgba(232,88,74,A)', null, '生肉を置く');
+    ring(g.outPad.x, g.outPad.y, 36, 'rgba(255,154,59,A)', null, '焼けた肉');
   });
   G.counters.forEach(c => {
-    ring(c.servePad.x, c.servePad.y, 36, 'rgba(60,160,90,A)', null, '配る');
-    if (c.cash > 0) ring(c.cashPos.x, c.cashPos.y, 30, 'rgba(230,180,20,A)');
+    ring(c.servePad.x, c.servePad.y, 38, 'rgba(60,170,95,A)', null, '配る');
+    if (c.cash > 0) ring(c.cashPos.x, c.cashPos.y, 32, 'rgba(240,190,30,A)');
   });
   const pad = G.pad;
   if (pad) {
-    const pulse = 1 + Math.sin(pad.pulse * 4) * 0.04;
+    const left = pad.price - pad.paid;
+    const can = G.money >= left;
+    const pulse = 1 + Math.sin(pad.pulse * 5) * (can ? 0.08 : 0.03);
     ctx.save();
     ctx.translate(pad.x, pad.y);
     ctx.scale(pulse, pulse);
-    ctx.fillStyle = 'rgba(40,90,160,.35)';
-    ctx.beginPath(); ctx.ellipse(0, 0, 46, 26, 0, 0, Math.PI * 2); ctx.fill();
-    // 払った分だけ金色に
-    ctx.strokeStyle = '#ffd23f';
-    ctx.lineWidth = 6;
-    ctx.beginPath(); ctx.ellipse(0, 0, 46, 26, 0, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (pad.paid / pad.price)); ctx.stroke();
-    ctx.strokeStyle = 'rgba(255,255,255,.9)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([6, 5]);
-    ctx.beginPath(); ctx.ellipse(0, 0, 46, 26, 0, 0, Math.PI * 2); ctx.stroke();
-    ctx.setLineDash([]);
+    if (can) { ctx.shadowColor = '#ffd23f'; ctx.shadowBlur = 18; }
+    // 台座（下の厚み → 上の面）
+    ctx.fillStyle = '#b9791f';
+    ctx.beginPath(); ctx.ellipse(0, 5, 56, 32, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+    const gr = ctx.createLinearGradient(0, -32, 0, 32);
+    gr.addColorStop(0, can ? '#ffe680' : '#e8eef5');
+    gr.addColorStop(1, can ? '#ff9a3b' : '#aab8c8');
+    ctx.fillStyle = gr;
+    ctx.beginPath(); ctx.ellipse(0, 0, 56, 32, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    // 払った分だけ、ふちが金色に
+    ctx.strokeStyle = '#2fbf5a';
+    ctx.lineWidth = 7;
+    ctx.beginPath(); ctx.ellipse(0, 0, 56, 32, 0, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (pad.paid / pad.price)); ctx.stroke();
     ctx.restore();
     ctx.save();
     ctx.textAlign = 'center';
-    ctx.font = '900 14px "Hiragino Sans","Yu Gothic UI",sans-serif';
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = 'rgba(20,40,80,.85)';
-    ctx.strokeText(pad.label, pad.x, pad.y - 36);
+    // 名前の札
+    ctx.font = '900 16px "Hiragino Sans","Yu Gothic UI",sans-serif';
+    const w = ctx.measureText(pad.label).width + 22;
+    ctx.fillStyle = 'rgba(29,58,95,.92)';
+    roundRect(pad.x - w / 2, pad.y - 70, w, 26, 13); ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+    roundRect(pad.x - w / 2, pad.y - 70, w, 26, 13); ctx.stroke();
     ctx.fillStyle = '#fff';
-    ctx.fillText(pad.label, pad.x, pad.y - 36);
-    drawSprite('coin', pad.x - 26, pad.y + 9, 20);
-    ctx.font = '900 17px "Hiragino Sans","Yu Gothic UI",sans-serif';
-    const left = fmt(pad.price - pad.paid);
-    ctx.strokeText(left, pad.x + 8, pad.y + 6);
-    ctx.fillStyle = '#ffd23f';
-    ctx.fillText(left, pad.x + 8, pad.y + 6);
+    ctx.fillText(pad.label, pad.x, pad.y - 51);
+    // 値段（足りないときは赤）
+    drawSprite('coin', pad.x - 30, pad.y + 14, 28);
+    ctx.font = '900 24px "Hiragino Sans","Yu Gothic UI",sans-serif';
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = 'rgba(90,50,0,.85)';
+    ctx.strokeText(fmt(left), pad.x + 10, pad.y + 9);
+    ctx.fillStyle = can ? '#fff' : '#ffb3b3';
+    ctx.fillText(fmt(left), pad.x + 10, pad.y + 9);
     ctx.restore();
   }
 }
@@ -2220,13 +2251,20 @@ function drawJoystick() {
 // お金を拾ったとき、コインが画面左上の所持金へ飛んでいく
 function drawCoinFly(W) {
   const cam = G.cam;
-  const target = { x: 40, y: 32 };
+  // 飛んでいく先は、画面上の所持金のコイン
+  if (!G.coinTarget || G.time - (G.coinTargetT || 0) > 1) {
+    const r = canvas.getBoundingClientRect(), e = document.querySelector('.chip.money img').getBoundingClientRect();
+    G.coinTarget = { x: e.left - r.left + e.width / 2, y: e.top - r.top + e.height / 2 };
+    G.coinTargetT = G.time;
+  }
+  const target = G.coinTarget;
   G.coinFly.forEach(c => {
     const k = Math.min(1, c.t / 0.6);
     const sx = (c.x - cam.x) * cam.scale, sy = (c.y - cam.y) * cam.scale;
     const x = sx + (target.x - sx) * k * k, y = sy + (target.y - sy) * k * k - Math.sin(k * Math.PI) * 60;
     const im = images.coin;
-    if (im) ctx.drawImage(im, x - 11, y - 11, 22, 22);
+    const sz = 26 * (1.2 - 0.4 * k);
+    if (im) ctx.drawImage(im, x - sz / 2, y - sz / 2, sz, sz);
     else { ctx.font = '20px serif'; ctx.fillText('🪙', x - 10, y + 8); }
   });
 }
