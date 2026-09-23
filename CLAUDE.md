@@ -37,3 +37,10 @@
 ## 動作確認
 
 - ブラウザの開発者ツールで、ガイドに従って自動で動くボットを走らせると、解放までの時間を測れる（`currentGoal()` の方向に `G.keys` を押して `update(1/30)` を回す）。
+
+## 紹介用の画面写真
+
+- AIゲーム実験室（mitsukenn/ad-games）の `assets/screens/snow_1〜3.jpg`（540×1052）に使っている。
+- 撮り方：開発サーバー（8770）を立ち上げて、headless の Edge で `tools/shot.html?scene=1〜3` を撮る（1＝白クマとの戦い、2＝キャンプで配る、3＝雪の巨人との決戦）。
+  `msedge --headless=new --window-size=480,935 --force-device-scale-factor=1.125 --virtual-time-budget=30000 --screenshot=out.png "http://localhost:8770/tools/shot.html?scene=1"`
+
