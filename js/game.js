@@ -405,27 +405,22 @@ function updateTerritory(instant) {
   G.hunt = { ...CONFIG.hunt };   // 白クマの雪原は最初から全部
   if (instant || !G.bounds) { G.bounds = { ...t }; G.boundsTo = t; return; }
   const grew = (G.bounds.x0 - t.x0) + (t.x1 - G.bounds.x1) + (t.y1 - G.bounds.y1);
+  G.boundsFrom = { ...G.bounds };
+  G.bounds = { ...t };
   G.boundsTo = t;
   if (grew > 20) {
-    G.boundsFrom = { ...G.bounds };
-    G.boundsT = 0;
-    // ガコン！と広がる
+    G.edgePopT = 0;   // 新しいふちの木や雪が、ポンと生えてくる
     later(0.35, () => {
-      G.shake = Math.max(G.shake, 10);
+      G.shake = Math.max(G.shake, 8);
       Sound.sfx.bearDown();
       floatText(G.player.x, G.player.y - 140, 'エリアが広がった！', '#7fe0ff', 28);
-    }, 350);
+    });
   }
 }
 
-// 広がるアニメーション（ぐっとためてから一気に）
+// 広がったあと、新しいふちの木や雪が生えてくる時間を進める
 function animateTerritory(dt) {
-  if (G.boundsT == null) return;
-  G.boundsT += dt / 0.8;
-  const k = Math.min(1, G.boundsT);
-  const e = k < 0.4 ? 0 : 1 - Math.pow(1 - (k - 0.4) / 0.6, 3);
-  ['x0', 'x1', 'y1'].forEach(p => { G.bounds[p] = G.boundsFrom[p] + (G.boundsTo[p] - G.boundsFrom[p]) * e; });
-  if (k >= 1) G.boundsT = null;
+  if (G.edgePopT != null) { G.edgePopT += dt; if (G.edgePopT > 1.2) G.edgePopT = null; }
 }
 
 // キャンプの上のはし（柵のすぐ手前）。ここより手前がキャンプ
@@ -450,7 +445,21 @@ function edgePoints(step) {
   for (let y = top; y < b.y1; y += step) pts.push({ x: b.x0 - 22, y, side: 'l' });
   for (let x = b.x0 - 22; x <= b.x1 + 22; x += step) pts.push({ x, y: b.y1 + 22, side: 'b' });
   for (let y = top; y < b.y1; y += step) pts.push({ x: b.x1 + 22, y, side: 'r' });
+  // 広がった直後は、新しくできたふちだけ小さい状態から生えてくる
+  const f = G.boundsFrom;
+  pts.forEach(p => {
+    const isNew = f && G.edgePopT != null && (
+      (p.side === 'l' && (b.x0 !== f.x0 || p.y > f.y1)) ||
+      (p.side === 'r' && (b.x1 !== f.x1 || p.y > f.y1)) ||
+      (p.side === 'b' && (b.y1 !== f.y1 || p.x < f.x0 - 22 || p.x > f.x1 + 22)));
+    p.k = isNew ? popIn(G.edgePopT - 0.15 - ((p.x + p.y) % 7) * 0.03) : 1;
+  });
   return pts;
+}
+// 0 → 1 に少し行きすぎてから戻る（ポンと生える感じ）
+function popIn(t) {
+  const k = clamp(t / 0.45, 0, 1);
+  return k <= 0 ? 0 : 1 + 2.2 * Math.pow(k - 1, 3) + 1.2 * Math.pow(k - 1, 2);
 }
 
 // 領地の外：まだ誰も踏んでいない、ふかふかの雪原（少し白く明るい）。ふちは雪の吹きだまり
@@ -465,7 +474,8 @@ function drawTerritory() {
   // 吹きだまり：大きさと位置を少しずつ変えた雪の山を、ふちに沿って重ねる
   edgePoints(24).forEach((p, i) => {
     const k = hash(Math.round(p.x) * 7 + Math.round(p.y) * 13);
-    const r = 20 + k * 16;
+    if (p.k <= 0.01) return;
+    const r = (20 + k * 16) * p.k;
     const ox = (p.side === 'l' ? -1 : p.side === 'r' ? 1 : 0) * k * 10;
     const oy = p.side === 'b' ? k * 10 : 0;
     ctx.fillStyle = 'rgba(80,110,150,.16)';
@@ -488,7 +498,7 @@ function edgeDecor() {
     const push = p.side === 'l' ? -24 - k * 30 : p.side === 'r' ? 24 + k * 30 : 0;
     const down = p.side === 'b' ? 20 + k * 30 : 0;
     const kind = k > 0.88 ? ['rock', 38] : k > 0.78 ? ['bush', 46] : k > 0.6 ? ['pine', 80 + k * 45] : ['snowdrift', 34 + k * 20];
-    out.push({ name: pick(kind[0], 'rock'), x: p.x + push, y: p.y + down, h: kind[1] });
+    if (p.k > 0.01) out.push({ name: pick(kind[0], 'rock'), x: p.x + push, y: p.y + down, h: kind[1] * p.k });
   });
   return out;
 }
