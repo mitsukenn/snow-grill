@@ -9,7 +9,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="img/icon-192.png">
   <link rel="apple-touch-icon" href="img/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=20260924c">
+  <link rel="stylesheet" href="style.css?v=20260924d">
 </head>
 <body>
   <div id="app">
@@ -21,6 +21,19 @@
       <button id="mute-btn" class="hud-btn" aria-label="音のオン・オフ">🔊</button>
     </header>
     <div id="guide" class="guide hidden"></div>
+    <button id="up-btn" class="up-btn" aria-label="強化"><span>⬆</span>強化</button>
+
+    <!-- ===== 強化（レベルアップ） ===== -->
+    <div id="upgrades" class="upgrades hidden">
+      <div class="up-panel">
+        <div class="up-head">
+          <h2>⬆ 強化</h2>
+          <div class="chip money"><img src="img/ui/coin.webp" alt=""><span id="up-money">0</span></div>
+          <button id="up-close" class="up-close" aria-label="閉じる">✕</button>
+        </div>
+        <div id="up-list" class="up-list"></div>
+      </div>
+    </div>
 
     <div id="start" class="start">
       <div class="start-art">
@@ -35,8 +48,8 @@
     </div>
   </div>
 
-  <script src="js/config.js?v=20260924c"></script>
-  <script src="js/audio.js?v=20260924c"></script>
-  <script src="js/game.js?v=20260924c"></script>
+  <script src="js/config.js?v=20260924d"></script>
+  <script src="js/audio.js?v=20260924d"></script>
+  <script src="js/game.js?v=20260924d"></script>
 </body>
 </html>

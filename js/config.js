@@ -56,19 +56,25 @@ const CONFIG = {
   // ---- 解放（お金を払うと設備が増える）。上から順に1つずつ現れる ----
   unlocks: [
     { id: 'grill2', label: 'グリル2台目', price: 25, x: 205, y: 1060 },
-    { id: 'backpack', label: 'バックパック +6', price: 45, x: 330, y: 1180 },
     { id: 'hunter', label: '助っ人ハンター', price: 90, x: 330, y: 680 },
     { id: 'carrier', label: '運び係', price: 140, x: 330, y: 930 },
-    { id: 'axe', label: '斧を強化', price: 200, x: 110, y: 680 },
     { id: 'counter2', label: '配給台2つ目', price: 280, x: 610, y: 980 },
     { id: 'fire', label: 'キャンプファイヤー', price: 380, x: 330, y: 1270 },
     { id: 'huntArea', label: '狩り場拡張（ボス出現）', price: 500, x: 560, y: 660 },
-    { id: 'backpack2', label: 'バックパック +8', price: 650, x: 330, y: 1180 },
   ],
+  // ---- レベルアップ（強化画面）：お金でいつでも強化できる。値段 = cost[0] × cost[1]^レベル ----
+  upgrades: [
+    { id: 'cap', label: '背中に積める肉', icon: 'meat_raw', unit: '個', base: 8, step: 3, max: 12, cost: [15, 1.45] },
+    { id: 'grillCap', label: 'グリルに置ける肉', icon: 'grill_on', unit: '個', base: 10, step: 5, max: 10, cost: [25, 1.5] },
+    { id: 'counterCap', label: '配給台に置ける肉', icon: 'counter', unit: '個', base: 10, step: 5, max: 10, cost: [25, 1.5] },
+    { id: 'damage', label: '斧の攻撃力', icon: 'hero_attack', unit: '', base: 1, step: 1, max: 8, cost: [40, 1.7] },
+    { id: 'speed', label: '移動の速さ', icon: 'hero_walk', unit: '', base: 240, step: 15, max: 8, cost: [30, 1.55] },
+    { id: 'cook', label: '焼く速さ', icon: 'meat_cooked', unit: '秒', base: 0.9, step: -0.08, max: 7, cost: [35, 1.6] },
+    { id: 'pay', label: '肉1個の支払い', icon: 'coins_pile', unit: '', base: 6, step: 1, max: 15, cost: [50, 1.45] },
+  ],
+
   // リストを全部解放したあとは、何度でも買える強化が順番に出てくる（値段はだんだん上がる）
   repeatUnlocks: [
-    { id: 'cookSpeed', label: '焼く速さ UP', base: 500, x: 205, y: 960 },
-    { id: 'payUp', label: '支払い UP', base: 600, x: 540, y: 1180 },
     { id: 'moreBears', label: '白クマ +1', base: 700, x: 330, y: 680 },
   ],
   repeatGrowth: 1.35,        // 買うたびに値段が何倍になるか

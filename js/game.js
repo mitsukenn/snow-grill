@@ -70,7 +70,7 @@ function loadSave() {
 function persist() {
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
-      money: G.money, rescued: G.rescued, unlockIdx: G.unlockIdx, kills: G.kills, muted: G.muted,
+      money: G.money, rescued: G.rescued, unlockIdx: G.unlockIdx, kills: G.kills, muted: G.muted, up: G.up,
     }));
   } catch (e) { /* 保存できない環境では無視 */ }
 }
@@ -81,7 +81,7 @@ function persist() {
 let canvas, ctx, groundPattern = null;
 const G = {
   money: 0, rescued: 0, unlockIdx: 0, kills: 0, muted: false,
-  maxBears: CONFIG.bear.max, bossOn: false, fire: false, cookMul: 1, payBonus: 0,
+  maxBears: CONFIG.bear.max, bossOn: false, fire: false, up: {}, paused: false,
   player: null, bears: [], drops: [], grills: [], counters: [], customers: [], helpers: [],
   flyers: [], texts: [], parts: [], snow: [], steps: [], fx: [],
   pad: null, spawnT: 0, bearT: 0, shake: 0, time: 0,
@@ -119,20 +119,80 @@ function applyUnlock(id, fromSave) {
   const u = CONFIG.unlocks.find(x => x.id === id) || CONFIG.repeatUnlocks.find(x => x.id === id);
   let made = null;   // 新しく置いた設備・助っ人（ポンと出てくる演出用）
   switch (id) {
-    case 'cookSpeed': G.cookMul *= 0.85; break;
-    case 'payUp': G.payBonus += 1; break;
     case 'moreBears': G.maxBears = Math.min(8, G.maxBears + 1); break;
     case 'grill2': made = makeGrill(CONFIG.grills[1]); G.grills.push(made); break;
-    case 'backpack': G.player.cap += 6; break;
-    case 'backpack2': G.player.cap += 8; break;
     case 'hunter': made = makeHelper('hunter'); G.helpers.push(made); break;
     case 'carrier': made = makeHelper('carrier'); G.helpers.push(made); break;
-    case 'axe': G.player.damage = 2; break;
     case 'counter2': made = makeCounter(CONFIG.counters[1]); G.counters.push(made); break;
     case 'fire': G.fire = true; G.firePos = { x: u.x, y: u.y }; break;
     case 'huntArea': G.maxBears = 5; G.bossOn = true; break;
   }
   if (made && !fromSave) made.pop = 0;
+}
+
+// ============================================================
+//  レベルアップ（強化画面）：レベルから今の能力値を計算する
+// ============================================================
+const upDef = id => CONFIG.upgrades.find(u => u.id === id);
+const upLv = id => G.up[id] || 0;
+function stat(id) {
+  const u = upDef(id);
+  return +(u.base + u.step * upLv(id)).toFixed(2);
+}
+const upCost = id => { const u = upDef(id); return Math.round(u.cost[0] * Math.pow(u.cost[1], upLv(id))); };
+const upMaxed = id => upLv(id) >= upDef(id).max;
+// 背中の容量・攻撃力をプレイヤーに反映
+function applyUpgrades() {
+  G.player.cap = stat('cap');
+  G.player.damage = stat('damage');
+}
+const canAffordAnyUpgrade = () => CONFIG.upgrades.some(u => !upMaxed(u.id) && G.money >= upCost(u.id));
+
+function buyUpgrade(id) {
+  if (upMaxed(id) || G.money < upCost(id)) return;
+  G.money -= upCost(id);
+  G.up[id] = upLv(id) + 1;
+  applyUpgrades();
+  Sound.sfx.unlock();
+  floatText(G.player.x, G.player.y - 110, upDef(id).label + ' UP!', '#ffd23f', 24);
+  sparks(G.player.x, G.player.y - 50, 20, ['#ffd23f', '#fff', '#7fe0ff']);
+  persist();
+  updateHud();
+  renderUpgrades();
+}
+
+function fmtStat(u, v) {
+  return (u.id === 'cook' ? v.toFixed(2) : fmt(v)) + u.unit;
+}
+
+function renderUpgrades() {
+  const list = $('up-list');
+  list.innerHTML = '';
+  $('up-money').textContent = fmt(G.money);
+  CONFIG.upgrades.forEach(u => {
+    const lv = upLv(u.id), maxed = upMaxed(u.id), cost = upCost(u.id);
+    const row = document.createElement('div');
+    row.className = 'up-row';
+    const next = maxed ? '' : ` → <b>${fmtStat(u, u.base + u.step * (lv + 1))}</b>`;
+    row.innerHTML = `<img src="${IMG(u.icon)}" alt="">
+      <div class="up-info"><div class="up-name">${u.label}<span>Lv ${lv + 1}${maxed ? ' (MAX)' : ''}</span></div>
+      <div class="up-val">${fmtStat(u, stat(u.id))}${next}</div></div>`;
+    const btn = document.createElement('button');
+    btn.className = 'up-buy';
+    btn.innerHTML = maxed ? 'MAX' : `<img src="img/coin.webp" alt="">${fmt(cost)}`;
+    btn.disabled = maxed || G.money < cost;
+    btn.onclick = () => buyUpgrade(u.id);
+    row.appendChild(btn);
+    list.appendChild(row);
+  });
+}
+
+function openUpgrades(open) {
+  G.paused = open;
+  G.joy = null;
+  G.keys = {};
+  $('upgrades').classList.toggle('hidden', !open);
+  if (open) { renderUpgrades(); Sound.sfx.click(); }
 }
 
 function nextPad() {
@@ -155,6 +215,8 @@ function init() {
   G.money = s.money || 0;
   G.rescued = s.rescued || 0;
   G.kills = s.kills || 0;
+  G.up = s.up || {};
+  applyUpgrades();
   G.unlockIdx = s.unlockIdx || 0;
   for (let i = 0; i < G.unlockIdx; i++) applyUnlock(unlockAt(i).id, true);
   nextPad();
@@ -174,6 +236,8 @@ function init() {
     $('mute-btn').textContent = G.muted ? '🔇' : '🔊';
     persist();
   };
+  $('up-btn').onclick = () => openUpgrades(true);
+  $('up-close').onclick = () => openUpgrades(false);
   $('start').onclick = () => {
     $('start').classList.add('hidden');
     Sound.startBgm();
@@ -376,7 +440,7 @@ function fly(name, from, to, h = 26, dur = 0.28, onDone) {
 function updatePlayer(dt) {
   const P = G.player;
   const { dx, dy, mag } = inputDir();
-  const sp = CONFIG.player.speed * mag;
+  const sp = stat('speed') * mag;
   P.vx = dx * sp; P.vy = dy * sp;
   P.x = clamp(P.x + P.vx * dt, 20, CONFIG.world.w - 20);
   P.y = clamp(P.y + P.vy * dt, 60, CONFIG.world.h - 20);
@@ -457,7 +521,7 @@ function interactStations(who, dt, rate, cap, isPlayer) {
   if (who.xferT > 0) return;
   for (const g of G.grills) {
     // 生肉をグリルに置く
-    if (who.stack[0] === 'raw' && g.raw < CONFIG.grill.inCap && dist(who, g.inPad) < 48) {
+    if (who.stack[0] === 'raw' && g.raw < stat('grillCap') && dist(who, g.inPad) < 48) {
       who.stack.pop();
       g.raw++;
       who.xferT = rate;
@@ -477,7 +541,7 @@ function interactStations(who, dt, rate, cap, isPlayer) {
   }
   for (const c of G.counters) {
     // 焼けた肉を配給台に置く
-    if (who.stack[0] === 'cooked' && c.stock < CONFIG.counter.cap && dist(who, c.servePad) < 48) {
+    if (who.stack[0] === 'cooked' && c.stock < stat('counterCap') && dist(who, c.servePad) < 48) {
       who.stack.pop();
       c.stock++;
       who.xferT = rate;
@@ -494,10 +558,10 @@ function interactStations(who, dt, rate, cap, isPlayer) {
 function updateGrills(dt) {
   G.grills.forEach(g => {
     g.pop = Math.min(1, g.pop + dt * 2.5);
-    if (g.raw > 0 && g.cooked < CONFIG.grill.outCap) {
+    if (g.raw > 0 && g.cooked < stat('grillCap')) {
       g.t += dt;
       if (Math.random() < dt * 6) G.parts.push({ x: g.x + rand(-20, 20), y: g.y - 60, vx: rand(-8, 8), vy: rand(-40, -25), t: 1.2, life: 1.2, kind: 'smoke' });
-      if (g.t >= CONFIG.grill.cookSec * G.cookMul) {
+      if (g.t >= stat('cook')) {
         g.t = 0;
         g.raw--;
         g.cooked++;
@@ -540,7 +604,7 @@ function updateCustomers(dt) {
         fly('meat_cooked', { x: c.x, y: c.y - 40 }, { x: front.x, y: front.y - 50 }, 24, 0.22);
         if (front.got >= front.want) {
           // お金を払って、笑顔で帰る
-          const pay = front.want * (C.price + (G.fire ? 2 : 0) + G.payBonus);
+          const pay = front.want * (stat('pay') + (G.fire ? 2 : 0));
           c.cash += pay;
           for (let i = 0; i < Math.min(6, front.want * 2); i++) {
             fly('coin', { x: front.x, y: front.y - 40 }, { x: c.cashPos.x + rand(-12, 12), y: c.cashPos.y - 6 }, 16, 0.35);
@@ -726,6 +790,7 @@ function currentGoal() {
 //  更新
 // ============================================================
 function update(dt) {
+  if (G.paused) return;
   G.time += dt;
   updatePlayer(dt);
   updateBears(dt);
@@ -760,6 +825,7 @@ function updateHud() {
     el.textContent = fmt(v);
   };
   bump('money', G.money);
+  $('up-btn').classList.toggle('ready', canAffordAnyUpgrade());
   bump('rescued', G.rescued);
 }
 
@@ -990,7 +1056,7 @@ function drawGrill(g) {
     ctx.fillStyle = 'rgba(0,0,0,.35)';
     roundRect(g.x - 30, g.y - 104, 60, 8, 4); ctx.fill();
     ctx.fillStyle = '#ff9a3b';
-    roundRect(g.x - 30, g.y - 104, 60 * (g.t / (CONFIG.grill.cookSec * G.cookMul)), 8, 4); ctx.fill();
+    roundRect(g.x - 30, g.y - 104, 60 * (g.t / stat('cook')), 8, 4); ctx.fill();
   }
 }
 
