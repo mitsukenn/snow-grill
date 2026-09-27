@@ -538,6 +538,8 @@ function init() {
   $('map-btn').onclick = () => openMap(true);
   $('map-close').onclick = () => openMap(false);
   $('feedback-link').onclick = () => persist();   // 感想ページへ移る前にセーブ
+  $('games-link').onclick = () => persist();      // ほかのゲーム（AIゲーム実験室のトップ）へ移る前にセーブ
+  $('start-games').onclick = e => { e.stopPropagation(); persist(); };   // スタート画面全体のタップ（ゲーム開始）に渡さない
   $('up-close').onclick = () => openUpgrades(false);
   $('upgrades').addEventListener('click', e => { if (e.target.id === 'upgrades') openUpgrades(false); });
   $('map').addEventListener('click', e => { if (e.target.id === 'map' || e.target.classList.contains('map-area')) openMap(false); });
