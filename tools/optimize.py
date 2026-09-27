@@ -25,7 +25,7 @@ def main() -> None:
     only_grounds = "--grounds" in sys.argv
     for src in ([] if only_grounds else sorted((SRC / "sprites").glob("*.png"))):
         im = Image.open(src).convert("RGBA")
-        size = BIG.get(src.stem, 256)
+        size = BIG.get(src.stem, BIG.get(src.stem.rsplit("_", 1)[0], 256))   # 村ごとの絵（grill_on_lake など）も元と同じ大きさ
         im.thumbnail((size, size), Image.LANCZOS)
         im.save(DST / f"{src.stem}.webp", "WEBP", quality=88, method=6)
         n += 1

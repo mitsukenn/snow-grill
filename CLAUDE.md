@@ -28,6 +28,8 @@
 - 原本は `assets/sprites/*.png`（ChatGPT で 3×3 のシートを作り `tools/slice_sheet.py` で切り出し）。
 - 原本を変えたら `python tools/optimize.py` で `img/*.webp` を作り直す。
 - 村ごとの地面：ChatGPT で「真上から見た地面テクスチャ・1枚に1種類」を頼み、`bash tools/grab_latest.sh <名前>` → `python tools/ground_sheet.py assets/_sheets/<名前>.png <名前>` → `python tools/optimize.py --grounds` で `img/ground_<名前>.webp`（つなぎ目の出ないタイル）。`SCENES` の `ground: { field, camp }` で使う。2×2 にまとめて頼むと特徴の弱い雪ばかりになるので、1枚ずつ英語で具体的に頼む。狩り場に暗い水面があると「白クマや人が海に落ちそう」に見えるので避ける（港の流氷はすき間を `tools/frozen_seams.py` で氷の色に埋めた `port_frozen` を使う）。
+- 村ごとの設備の絵：`img/<名前>_<村の id>.webp`（例 `grill_on_lake`）。`js/scenery.js` の `FACILITY_SETS` に村と名前を並べると、描くときに `fac(名前)` が村の絵に差しかえる。ChatGPT には今の設備を並べた画像を添えて「同じ画風・透明背景・2行×3列」で頼み、`python tools/slice_sheet.py assets/_sheets/fac_<村>.png assets/sprites <名前_村,...>` → `python tools/optimize.py`
+- BGM：`js/audio.js` の `SONGS`（曲）と `PLAYLIST`（村の id → 2曲。1曲を3回まわしたら次の曲）。村に入ると `Sound.setBgm(id)`、巨人が出ている間は `'giant'`
 - 大きい敵（ボス白クマ・巨人）は `CONFIG.topY` より奥へ行かない（奥だと頭と体力ゲージが画面上の HUD に隠れる）。
 - 素材を ChatGPT で追加生成するときの注意は power-tower の CLAUDE.md と同じ（依頼は1〜2分おき、保存は BroadcastChannel 経由）。
 

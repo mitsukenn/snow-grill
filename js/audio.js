@@ -81,24 +81,78 @@ const Sound = (() => {
     arrow: throttle('arrow', 80, () => noise(90, 0.06, 2500, 0, 5000)),
   };
 
-  // BGM：のんびりした雪原のループ
-  const BPM = 100, STEP = 60 / BPM / 2;
-  const chords = [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]];   // Am F C G
-  const melody = [76, 0, 74, 72, 0, 69, 72, 0, 74, 0, 76, 79, 76, 0, 74, 0];
+  // ---- BGM：村ごとに2曲を交互に流す（1曲を3回まわしたら次の曲へ）。巨人が出ている間は決戦の曲 ----
+  // 1曲は 8分音符 32 個（4小節）。chords＝小節ごとの和音（MIDI）、mel＝32 個の旋律（0 は休み）
+  // bass：calm（ゆったり）/ drive（刻む）/ bounce（はずむ）、drum：none / soft / march、melEvery：2 なら1回おきに旋律
+  const C = {
+    Am: [57, 60, 64], F: [53, 57, 60], C: [48, 52, 55], G: [55, 59, 62], D: [50, 54, 57], Bm: [47, 50, 54],
+    A: [45, 49, 52], Em: [52, 55, 59], Em7: [52, 55, 59, 62], Cmaj7: [48, 52, 55, 59], E: [52, 56, 59],
+    Dm: [50, 53, 57], Bb: [46, 50, 53], Fmaj7: [53, 57, 60, 64], Dm7: [50, 53, 57, 60],
+  };
+  const SONGS = {
+    yukimichi: { bpm: 100, bass: 'calm', drum: 'none', lead: 'triangle', sparkle: true, melEvery: 2, chords: [C.Am, C.F, C.C, C.G],
+      mel: [76, 0, 74, 72, 0, 69, 72, 0, 74, 0, 76, 79, 76, 0, 74, 0, 76, 0, 74, 72, 0, 69, 72, 0, 74, 0, 72, 71, 69, 0, 0, 0] },
+    danro: { bpm: 92, bass: 'calm', drum: 'soft', lead: 'triangle', sparkle: false, melEvery: 1, chords: [C.C, C.Am, C.F, C.G],
+      mel: [72, 0, 76, 0, 79, 0, 76, 0, 81, 0, 79, 0, 76, 0, 72, 0, 77, 0, 76, 0, 74, 0, 72, 0, 74, 0, 0, 0, 79, 0, 0, 0] },
+    kosui: { bpm: 84, bass: 'calm', drum: 'none', lead: 'sine', sparkle: true, melEvery: 1, chords: [C.D, C.Bm, C.G, C.A],
+      mel: [78, 0, 0, 81, 0, 0, 78, 76, 74, 0, 0, 78, 0, 0, 76, 0, 74, 0, 0, 71, 0, 74, 76, 0, 73, 0, 0, 76, 0, 0, 0, 0] },
+    hyomen: { bpm: 90, bass: 'calm', drum: 'soft', lead: 'sine', sparkle: true, melEvery: 1, chords: [C.Em7, C.Cmaj7, C.G, C.D],
+      mel: [71, 0, 74, 0, 76, 0, 74, 71, 72, 0, 71, 0, 67, 0, 0, 0, 67, 0, 71, 0, 74, 0, 79, 0, 78, 0, 76, 0, 74, 0, 0, 0] },
+    fubuki: { bpm: 116, bass: 'drive', drum: 'soft', lead: 'square', sparkle: false, wind: true, melEvery: 1, chords: [C.Em, C.C, C.D, C.Bm],
+      mel: [76, 0, 76, 79, 0, 76, 74, 0, 72, 0, 72, 76, 0, 72, 71, 0, 74, 0, 74, 78, 0, 74, 72, 0, 71, 0, 0, 0, 74, 0, 78, 0] },
+    toge: { bpm: 108, bass: 'drive', drum: 'soft', lead: 'triangle', sparkle: false, wind: true, melEvery: 1, chords: [C.Am, C.G, C.F, C.E],
+      mel: [69, 0, 72, 0, 76, 0, 74, 72, 71, 0, 74, 0, 79, 0, 77, 76, 77, 0, 76, 0, 74, 0, 72, 0, 71, 0, 68, 0, 71, 0, 0, 0] },
+    minato: { bpm: 124, bass: 'bounce', drum: 'soft', lead: 'square', sparkle: false, melEvery: 1, chords: [C.G, C.C, C.D, C.G],
+      mel: [79, 0, 79, 81, 83, 0, 81, 79, 76, 0, 76, 79, 81, 0, 79, 76, 74, 0, 78, 0, 81, 0, 78, 74, 79, 0, 0, 0, 74, 0, 79, 0] },
+    yuyake: { bpm: 96, bass: 'bounce', drum: 'none', lead: 'triangle', sparkle: false, melEvery: 1, chords: [C.C, C.Em, C.F, C.G],
+      mel: [76, 0, 0, 79, 77, 0, 76, 74, 71, 0, 0, 74, 72, 0, 71, 69, 72, 0, 0, 77, 76, 0, 74, 72, 74, 0, 0, 0, 0, 0, 0, 0] },
+    outo: { bpm: 94, bass: 'calm', drum: 'march', lead: 'triangle', sparkle: true, melEvery: 1, chords: [C.Dm, C.Bb, C.F, C.C],
+      mel: [74, 0, 0, 77, 0, 0, 81, 0, 82, 0, 0, 81, 0, 0, 77, 0, 77, 0, 0, 81, 0, 0, 84, 0, 79, 0, 0, 0, 76, 0, 0, 0] },
+    aurora: { bpm: 80, bass: 'calm', drum: 'none', lead: 'sine', sparkle: true, melEvery: 1, chords: [C.Fmaj7, C.Em7, C.Dm7, C.C],
+      mel: [81, 0, 0, 0, 79, 0, 77, 0, 76, 0, 0, 0, 74, 0, 72, 0, 74, 0, 0, 77, 0, 0, 81, 0, 79, 0, 0, 0, 0, 0, 0, 0] },
+    kessen: { bpm: 138, bass: 'drive', drum: 'march', lead: 'square', sparkle: false, melEvery: 1, chords: [C.Am, C.Am, C.F, C.G],
+      mel: [81, 0, 81, 0, 79, 0, 76, 0, 81, 0, 0, 84, 0, 83, 81, 0, 77, 0, 77, 0, 76, 0, 74, 0, 76, 0, 0, 79, 0, 83, 0, 0] },
+    kyojin: { bpm: 132, bass: 'drive', drum: 'march', lead: 'sawtooth', sparkle: false, melEvery: 1, chords: [C.Dm, C.Dm, C.Bb, C.C],
+      mel: [74, 0, 74, 77, 0, 74, 72, 0, 74, 0, 0, 0, 81, 0, 79, 77, 77, 0, 77, 79, 0, 77, 74, 0, 72, 0, 0, 0, 76, 0, 79, 0] },
+  };
+  // 村の id → 流す曲（2曲を交互に）。giant は巨人が出ている間
+  const PLAYLIST = {
+    camp: ['yukimichi', 'danro'], lake: ['kosui', 'hyomen'], pass: ['fubuki', 'toge'], port: ['minato', 'yuyake'],
+    capital: ['outo', 'aurora'], battle1: ['toge', 'fubuki'], battle2: ['hyomen', 'toge'], giant: ['kessen', 'kyojin'],
+  };
   const midi = n => 440 * Math.pow(2, (n - 69) / 12);
-  let step = 0, nextTime = 0;
+  let list = PLAYLIST.camp, song = SONGS[list[0]], songIdx = 0, loops = 0, step = 0, nextTime = 0;
+
+  function playStep(S, i, at) {
+    const st = 60 / S.bpm / 2, chord = S.chords[Math.floor(i / 8) % 4], k = i % 8;
+    // ベース
+    if (S.bass === 'calm') { if (k % 4 === 0) tone(midi(chord[0] - 12), st * 3500, 'triangle', 0.05, at); }
+    else if (S.bass === 'drive') tone(midi(chord[0] - 12), st * 800, k % 2 ? 'triangle' : 'sawtooth', k % 2 ? 0.03 : 0.028, at);
+    else if (k === 0 || k === 4 || k === 6) tone(midi((k === 4 ? chord[2] : chord[0]) - 12), st * 900, 'triangle', 0.055, at);
+    // 分散和音
+    tone(midi(chord[i % chord.length] + 12), st * 900, S.bass === 'bounce' ? 'square' : 'sine', S.bass === 'bounce' ? 0.008 : 0.018, at);
+    // 旋律
+    const m = S.mel[i % 32];
+    if (m && Math.floor(i / 32) % S.melEvery === 0) tone(midi(m), st * 1600, S.lead, S.lead === 'square' || S.lead === 'sawtooth' ? 0.016 : 0.028, at);
+    // 太鼓
+    if (S.drum === 'soft' && k === 0) tone(70, 160, 'sine', 0.09, at);
+    if (S.drum === 'march') {
+      if (k % 4 === 0) tone(62, 150, 'sine', 0.13, at);
+      if (k === 4) noise(110, 0.05, 1800, at);
+      if (k % 2 === 1) noise(30, 0.012, 7000, at);
+    }
+    if (S.sparkle && k % 2 === 1) tone(midi(96 + (i % 5)), 40, 'sine', 0.006, at);   // 雪のきらめき
+    if (S.wind && i % 32 === 0) noise(2200, 0.02, 500, at, 1500);                        // 吹雪の風
+  }
 
   function schedule() {
     while (nextTime < ctx.currentTime + 0.2) {
-      const chord = chords[Math.floor(step / 8) % chords.length];
-      const at = nextTime - ctx.currentTime;
-      if (step % 4 === 0) tone(midi(chord[0] - 12), STEP * 3500, 'triangle', 0.05, at);
-      tone(midi(chord[step % 3] + 12), STEP * 900, 'sine', 0.018, at);
-      const m = melody[step % melody.length];
-      if (m && Math.floor(step / 16) % 2 === 1) tone(midi(m), STEP * 1600, 'triangle', 0.025, at);
-      if (step % 2 === 1) tone(midi(96 + (step % 5)), 40, 'sine', 0.006, at);   // 雪のきらめき
-      nextTime += STEP;
-      step++;
+      playStep(song, step + loops * 32, nextTime - ctx.currentTime);   // loops も渡す（旋律を1回おきにする曲のため）
+      nextTime += 60 / song.bpm / 2;
+      if (++step >= 32) {                             // 1曲まわった
+        step = 0;
+        if (++loops >= 3) { loops = 0; songIdx = (songIdx + 1) % list.length; song = SONGS[list[songIdx]]; }
+      }
     }
   }
 
@@ -108,10 +162,17 @@ const Sound = (() => {
     bgmTimer = setInterval(schedule, 60);
   }
 
+  // 曲を切りかえる（村の id か 'giant'）。同じなら何もしない
+  function setBgm(key) {
+    const l = PLAYLIST[key] || PLAYLIST.camp;
+    if (l === list) return;
+    list = l; songIdx = 0; loops = 0; step = 0; song = SONGS[list[0]];
+  }
+
   function setMuted(m) {
     muted = m;
     if (master) master.gain.value = m ? 0 : 1;
   }
 
-  return { sfx, startBgm, setMuted };
+  return { sfx, startBgm, setBgm, setMuted };
 })();

@@ -72,6 +72,7 @@ function spawnGiant() {
   };
   G.bears.push(b);
   G.battle.giant = b;
+  Sound.setBgm('giant');
   updateHud();
   banner(g.name + ' あらわる！', '強い攻撃は赤い円でわかる。よけながら戦おう', 3.2);
   Sound.sfx.roar();
@@ -172,6 +173,7 @@ function updateGiant(b, dt) {
 function giantDefeated(b) {
   const B = CONFIG.battle.giantBase, g = G.v.giant;
   G.battle.won = true;
+  Sound.setBgm(G.v.id);   // 決戦の曲から村の曲へ
   b.deadT = 2.2;
   G.shake = 22;
   Sound.sfx.bearDown();

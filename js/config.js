@@ -142,7 +142,7 @@ const CONFIG = {
 
   // リストを全部解放したあとは、何度でも買える強化が順番に出てくる（値段はだんだん上がる）
   repeatUnlocks: [
-    { id: 'moreBears', label: '白クマ +1', base: 700, x: 330, y: 690 },
+    { id: 'moreBears', label: '狩り場の白クマを1頭ふやす', base: 700, x: 330, y: 690 },   // 同時に出る白クマの数 +1（最大8頭）
   ],
   repeatGrowth: 1.35,        // 買うたびに値段が何倍になるか
 

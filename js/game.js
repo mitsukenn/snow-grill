@@ -300,6 +300,7 @@ function enterVillage(id) {
   if (G.vs) persist();
   G.cur = id;
   G.v = villageById(id);
+  Sound.setBgm(id);   // 村ごとの曲
   G.vs = SAVE.villages[id] = SAVE.villages[id] || { unlockIdx: 0, rescued: 0, kills: 0, done: false };
   Object.assign(G, {
     bears: [], drops: [], customers: [], helpers: [], flyers: [], texts: [], parts: [], steps: [], fx: [], arrows: [],
@@ -1946,15 +1947,18 @@ function drawGrill(g) {
   ctx.save();
   ctx.translate(g.x, g.y);
   ctx.scale(sc, sc);
-  drawSprite(g.raw > 0 ? 'grill_on' : 'grill_off', 0, 0, 92);
+  drawSprite(fac(g.raw > 0 ? 'grill_on' : 'grill_off'), 0, 0, 92);   // fac：村ごとの絵（js/scenery.js）
   ctx.restore();
   // 置いてある生肉・焼けた肉の山（生肉はまな板、焼けた肉は大皿の上）
   if (images.station_raw && images.station_cooked) {
     // ChatGPT で作った作業台と大皿。たくさんのったら山盛りの絵に
-    drawSprite(g.raw >= 6 ? pick('station_raw_full', 'station_raw') : 'station_raw', g.inPad.x, g.inPad.y + 16, 62);
-    drawSprite(g.cooked >= 6 ? pick('station_cooked_full', 'station_cooked') : 'station_cooked', g.outPad.x, g.outPad.y + 16, 62);
-    if (g.raw < 6) pileAt('meat_raw', g.inPad.x, g.inPad.y - 26, g.raw); else pileCount(g.inPad.x, g.inPad.y - 50, g.raw);
-    if (g.cooked < 6) pileAt('meat_cooked', g.outPad.x, g.outPad.y - 26, g.cooked); else pileCount(g.outPad.x, g.outPad.y - 50, g.cooked);
+    // 村ごとの絵には山盛り版が無いので、たくさんでも肉の山（数つき）をのせる
+    const own = fac('station_raw') !== 'station_raw';
+    const full = (n) => n >= 6 && !own;
+    drawSprite(full(g.raw) ? pick('station_raw_full', 'station_raw') : fac('station_raw'), g.inPad.x, g.inPad.y + 16, 62);
+    drawSprite(full(g.cooked) ? pick('station_cooked_full', 'station_cooked') : fac('station_cooked'), g.outPad.x, g.outPad.y + 16, 62);
+    if (!full(g.raw)) pileAt('meat_raw', g.inPad.x, g.inPad.y - 26, g.raw); else pileCount(g.inPad.x, g.inPad.y - 50, g.raw);
+    if (!full(g.cooked)) pileAt('meat_cooked', g.outPad.x, g.outPad.y - 26, g.cooked); else pileCount(g.outPad.x, g.outPad.y - 50, g.cooked);
   } else {
     drawBoard(g.inPad.x, g.inPad.y);
     drawPlatter(g.outPad.x, g.outPad.y);
@@ -2039,7 +2043,7 @@ function drawCounter(c) {
   ctx.save();
   ctx.translate(c.x, c.y);
   ctx.scale(sc, sc);
-  drawSprite('counter', 0, 0, 70);
+  drawSprite(fac('counter'), 0, 0, 70);
   ctx.restore();
   pileAt('meat_cooked', c.x, c.y - 44, c.stock);
   if (c.cash > 0) {

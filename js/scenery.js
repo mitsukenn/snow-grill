@@ -18,7 +18,7 @@ const SCENES = {
     decor: [
       ['pine', 20, 60, 110], ['pine', 700, 90, 120], ['ice_rock', 30, 330, 60], ['pine', 700, 380, 110],
       ['@fishrack', 55, 700, 80], ['@fishrack', 668, 640, 80],
-      ['igloo', 60, 1270, 95], ['igloo', 660, 1300, 95], ['@fishrack', 70, 1170, 80], ['@boat', 650, 1180, 70],
+      ['tent_lake', 60, 1270, 110], ['tent_lake', 660, 1300, 110], ['@fishrack', 70, 1170, 80], ['@boat', 650, 1180, 70],
       ['logs', 300, 1330, 50], ['igloo', 80, 1385, 80],
     ],
     light: [['rgba(130,205,255,.13)', 'rgba(190,235,255,.05)']],
@@ -79,6 +79,16 @@ const SCENES = {
   },
 };
 const scene = () => (G.v && SCENES[G.v.id]) || SCENES.camp;
+
+// 村ごとの設備の絵（ChatGPT で作った img/<名前>_<村の id>.webp）。無い村・読めないときはいつもの絵
+const FACILITY_SETS = {
+  lake: ['grill_off', 'grill_on', 'counter', 'station_raw', 'station_cooked', 'tent'],
+};
+Object.entries(FACILITY_SETS).forEach(([v, names]) => names.forEach(n => { CONFIG.sprites[`${n}_${v}`] = CONFIG.sprites[n] || '?'; }));
+function fac(name) {
+  const set = G.v && FACILITY_SETS[G.v.id], own = `${name}_${G.v && G.v.id}`;
+  return set && set.includes(name) && images[own] ? own : name;
+}
 
 // ---------------- 置き物 ----------------
 function sceneDecor() {
