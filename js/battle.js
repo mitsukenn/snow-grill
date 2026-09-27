@@ -67,7 +67,7 @@ function spawnGiant() {
   const g = G.v.giant, B = CONFIG.battle.giantBase;
   const hp = Math.round(B.hp * g.hpMul);
   const b = {
-    giant: true, x: 360, y: CONFIG.hunt.y + 20, hp, maxHp: hp, face: 1, state: 'walk', cd: 2.5,
+    giant: true, x: 360, y: CONFIG.topY.giant, hp, maxHp: hp, face: 1, state: 'walk', cd: 2.5,
     hitT: 0, deadT: 0, pop: 0, walk: 0, boss: true, rocks: [],
   };
   G.bears.push(b);
@@ -150,7 +150,7 @@ function updateGiant(b, dt) {
   }
   b.face = goal.x > b.x ? 1 : -1;
   b.x = clamp(b.x, a.x + 40, a.x + a.w - 40);
-  b.y = clamp(b.y, a.y + 20, a.y + a.h + (fenceUp() ? -10 : 380));
+  b.y = clamp(b.y, CONFIG.topY.giant, a.y + a.h + (fenceUp() ? -10 : 380));
 
   if (b.cd <= 0) {
     const nearFence = fenceUp() && b.y > fenceY() - B.smashR * 0.8;
@@ -230,12 +230,12 @@ function drawGiant(b) {
   const big = b.state === 'windup' ? 1.05 + Math.sin(G.time * 30) * 0.015 : 1;
   castShadow(name, b.x, b.y, h * big, b.face < 0, 0.3);
   drawSprite(name, b.x, b.y - bob, h * big, { flip: b.face < 0, flash: b.hitT > 0.1, tint: g.tint });
-  // 体力ゲージ（大きめ）
-  const w = 130;
+  // 体力ゲージ（大きめ）。頭の上だと画面上の案内に隠れるので足元に出す
+  const w = 130, gy = b.y + 16;
   ctx.fillStyle = 'rgba(0,0,0,.5)';
-  roundRect(b.x - w / 2 - 2, b.y - h - 22, w + 4, 14, 7); ctx.fill();
+  roundRect(b.x - w / 2 - 2, gy, w + 4, 14, 7); ctx.fill();
   ctx.fillStyle = '#ff3d3d';
-  roundRect(b.x - w / 2, b.y - h - 20, w * Math.max(0, b.hp / b.maxHp), 10, 5); ctx.fill();
+  roundRect(b.x - w / 2, gy + 2, w * Math.max(0, b.hp / b.maxHp), 10, 5); ctx.fill();
 }
 
 // 飛んでいる氷の岩（いちばん手前に描く）

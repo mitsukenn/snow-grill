@@ -11,7 +11,7 @@
 
 ## 構成
 
-- 素の HTML / CSS / JavaScript。Canvas 2D で描画。`<script>` は config → audio → story → game → battle の順。村とストーリーは `js/story.js`、決戦・襲撃・バリケード修理は `js/battle.js`。
+- 素の HTML / CSS / JavaScript。Canvas 2D で描画。`<script>` は config → audio → story → game → battle → scenery の順。村とストーリーは `js/story.js`、決戦・襲撃・バリケード修理は `js/battle.js`、村ごとの景色（地面・置き物・時間帯の光）は `js/scenery.js` の `SCENES`（村の id ごと。どの村も雪の村のまま）。
 - 座標はワールド座標（720 × 1400、y が大きいほど手前）。`CONFIG.viewWidth` ぶんを画面の横幅に映し、カメラがプレイヤーを追う。
 - 描画は y の小さい順（奥から手前）。`drawSprite(名前, x, y, 高さ)` は足元基準。画像が無ければ `CONFIG.sprites` の絵文字で描く。
 - 肉の受け渡しは `interactStations()`（プレイヤーと運び係で共通）。背中の肉は `stack`（'raw' か 'cooked'、混ぜて持てない）。
@@ -27,6 +27,8 @@
 
 - 原本は `assets/sprites/*.png`（ChatGPT で 3×3 のシートを作り `tools/slice_sheet.py` で切り出し）。
 - 原本を変えたら `python tools/optimize.py` で `img/*.webp` を作り直す。
+- 村ごとの地面：ChatGPT で「真上から見た地面テクスチャ・1枚に1種類」を頼み、`bash tools/grab_latest.sh <名前>` → `python tools/ground_sheet.py assets/_sheets/<名前>.png <名前>` → `python tools/optimize.py --grounds` で `img/ground_<名前>.webp`（つなぎ目の出ないタイル）。`SCENES` の `ground: { field, camp }` で使う。2×2 にまとめて頼むと特徴の弱い雪ばかりになるので、1枚ずつ英語で具体的に頼む。
+- 大きい敵（ボス白クマ・巨人）は `CONFIG.topY` より奥へ行かない（奥だと頭と体力ゲージが画面上の HUD に隠れる）。
 - 素材を ChatGPT で追加生成するときの注意は power-tower の CLAUDE.md と同じ（依頼は1〜2分おき、保存は BroadcastChannel 経由）。
 
 ## 公開時の注意

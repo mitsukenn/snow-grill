@@ -504,7 +504,8 @@ function edgeDecor() {
     const push = p.side === 'l' ? -24 - k * 30 : p.side === 'r' ? 24 + k * 30 : 0;
     const down = p.side === 'b' ? 20 + k * 30 : 0;
     const kind = k > 0.88 ? ['rock', 38] : k > 0.78 ? ['bush', 46] : k > 0.6 ? ['pine', 80 + k * 45] : ['snowdrift', 34 + k * 20];
-    if (p.k > 0.01) out.push({ name: pick(kind[0], 'rock'), x: p.x + push, y: p.y + down, h: kind[1] * p.k });
+    const name = edgeName(kind[0]);   // 村ごとに置きかえる（峠は岩、港は木箱など）
+    if (p.k > 0.01) out.push({ name: name[0] === '@' ? name : pick(name, 'rock'), x: p.x + push, y: p.y + down, h: kind[1] * p.k });
   });
   return out;
 }
@@ -681,6 +682,7 @@ function spawnBear(boss) {
     x = rand(a.x + 40, a.x + a.w - 40);
     y = rand(a.y + 40, a.y + a.h - 40);
   } while (G.player && dist({ x, y }, G.player) < 220 && ++tries < 20);
+  if (boss) y = Math.max(y, CONFIG.topY.boss);
   const hp = Math.round((boss ? CONFIG.bossBear.hp : CONFIG.bear.hp) * G.v.bearHp);
   G.bears.push({ x, y, hp, maxHp: hp, boss, tx: x, ty: y, t: rand(0, 2), hitT: 0, face: 1, state: 'wander', deadT: 0, pop: 0, walk: 0 });
   if (boss) {
@@ -821,7 +823,7 @@ function updateBears(dt) {
       b.t -= dt;
       if (b.t <= 0 || Math.hypot(b.tx - b.x, b.ty - b.y) < 8) {
         b.tx = rand(a.x + 40, a.x + a.w - 40);
-        b.ty = rand(a.y + 40, a.y + a.h - 40);
+        b.ty = rand(b.boss ? CONFIG.topY.boss : a.y + 40, a.y + a.h - 40);
         b.t = rand(2, 5);
       }
       const sp = CONFIG.bear.speed * (b.boss ? 0.8 : 1);
@@ -833,7 +835,7 @@ function updateBears(dt) {
     }
     // バリケードがあれば白クマは柵を越えられない。無いと追いかけてキャンプまで入ってくる
     b.x = clamp(b.x, a.x + 20, a.x + a.w - 20);
-    b.y = clamp(b.y, a.y + 20, a.y + a.h + (fenceUp() ? 5 : b.raid ? 420 : 280));
+    b.y = clamp(b.y, b.boss ? CONFIG.topY.boss : a.y + 20, a.y + a.h + (fenceUp() ? 5 : b.raid ? 420 : 280));
   });
   G.bears = G.bears.filter(b => b.state !== 'dead' || b.deadT > 0);
   const alive = G.bears.filter(b => !b.boss && !b.raid).length;
@@ -1684,9 +1686,9 @@ function render() {
 
   // 奥（y が小さい）から順に描く
   const list = [];
-  CONFIG.decor.forEach(([name, x, y, h]) => list.push({ y, draw: () => { shadow(x, y, h * 0.3); drawSprite(name, x, y, h); } }));
+  sceneDecor().forEach(d => list.push({ y: d.y, draw: () => drawDecorItem(d) }));
   if (G.v && !G.v.battle) { const c = G.counters[0]; list.push({ y: c.y + 185, draw: drawGoalSign }); }
-  edgeDecor().forEach(d => list.push({ y: d.y, draw: () => { shadow(d.x, d.y, d.h * 0.3); drawSprite(d.name, d.x, d.y, d.h); } }));
+  edgeDecor().forEach(d => list.push({ y: d.y, draw: () => drawDecorItem(d) }));
   if (G.fire) list.push({ y: G.firePos.y, draw: drawFire });
   G.grills.forEach(g => list.push({ y: g.y, draw: () => drawGrill(g) }));
   G.counters.forEach(c => list.push({ y: c.y, draw: () => drawCounter(c) }));
@@ -1768,6 +1770,7 @@ function render() {
   // 画面に固定するもの（雪・ジョイスティック・お金の飛ぶ演出）
   ctx.setTransform(G.dpr, 0, 0, G.dpr, 0, 0);
   const W = canvas.width / G.dpr, H = canvas.height / G.dpr;
+  drawSceneLight(W, H);       // 村ごとの時間帯の光
   ctx.fillStyle = 'rgba(255,255,255,.85)';
   G.snow.forEach(f => { ctx.beginPath(); ctx.arc(f.x * W, f.y * H, f.s, 0, Math.PI * 2); ctx.fill(); });
   if (G.flash > 0) {   // 攻撃を受けたときの赤いフラッシュ
@@ -1793,7 +1796,9 @@ function render() {
 
 function drawGround() {
   const W = CONFIG.world.w, H = CONFIG.world.h;
-  if (images.ground) {
+  if (drawSceneBase(W, H)) {
+    // 村ごとの地面を敷いた（js/scenery.js）
+  } else if (images.ground) {
     if (!groundPattern) groundPattern = ctx.createPattern(images.ground, 'repeat');
     ctx.save();
     ctx.fillStyle = groundPattern;
@@ -1814,8 +1819,10 @@ function drawGround() {
   roundRect(a.x, a.y, a.w, a.h, 40);
   ctx.fill();
   if (G.v.tint) { ctx.fillStyle = G.v.tint; ctx.fillRect(0, 0, W, H); }
+  drawSceneGround('under');   // 村ごとの目印（js/scenery.js）
   drawTerritory();
   drawFence(a);
+  drawSceneGround('over');
   // キャンプ側は少しあたたかい色（踏み固められた雪）
   const cg = ctx.createLinearGradient(0, a.y + a.h + 60, 0, H);
   cg.addColorStop(0, 'rgba(255,225,190,0)');
