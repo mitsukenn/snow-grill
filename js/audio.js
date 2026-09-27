@@ -159,17 +159,65 @@ const Sound = (() => {
     }
   }
 
-  function startBgm() {
-    if (bgmTimer || !ensure()) return;
+  // ---- Suno で作った曲（bgm/<名前>.mp3、切れ目なくループするよう加工ずみ）----
+  // 村の id（と 'giant'）→ 曲。読み込めるまでと、読めなかったときは上のピコピコ（SONGS）を鳴らす
+  const FILES = {
+    camp: 'sg_camp', lake: 'sg_lake', pass: 'sg_pass', port: 'sg_port', capital: 'sg_capital',
+    battle1: 'sg_pass', battle2: 'sg_pass', giant: 'sg_giant',
+    onsen: 'sg_onsen', mine: 'sg_pass', battle3: 'sg_pass', forest: 'sg_lake', fortress: 'sg_capital', battle4: 'sg_throne', throne: 'sg_throne',
+  };
+  const FILE_VOL = 0.38;
+  const bufs = {}, loading = {};
+  let bgmKey = 'camp', started = false, preloaded = false, src = null, srcGain = null, srcName = null;
+  function loadFile(name) {
+    if (!ctx || !name || bufs[name] || loading[name]) return;
+    loading[name] = fetch(`bgm/${name}.mp3`)
+      .then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+      .then(b => new Promise((ok, ng) => ctx.decodeAudioData(b, ok, ng)))
+      .then(buf => { bufs[name] = buf; if (started && FILES[bgmKey] === name) playFile(); })
+      .catch(() => {});
+  }
+  function stopFile() {
+    if (!src) return;
+    const s = src, g = srcGain;
+    g.gain.setTargetAtTime(0, ctx.currentTime, 0.15);
+    setTimeout(() => { try { s.stop(); } catch (e) {} s.disconnect(); g.disconnect(); }, 800);
+    src = srcGain = srcName = null;
+  }
+  // いまの村の曲が読めていれば流す（ピコピコは止める）。流せたら true
+  function playFile() {
+    const name = FILES[bgmKey], buf = bufs[name];
+    if (!buf) return false;
+    if (src && srcName === name) return true;
+    stopFile();
+    clearInterval(bgmTimer); bgmTimer = null;
+    srcGain = ctx.createGain(); srcGain.gain.value = 0.0001; srcGain.connect(master);
+    src = ctx.createBufferSource(); src.buffer = buf; src.loop = true; src.connect(srcGain); src.start();
+    srcGain.gain.setTargetAtTime(FILE_VOL, ctx.currentTime, 0.3);
+    srcName = name;
+    return true;
+  }
+  function startSynth() {
+    if (bgmTimer) return;
     nextTime = ctx.currentTime + 0.05;
     bgmTimer = setInterval(schedule, 60);
   }
 
+  function startBgm() {
+    if (started || !ensure()) return;
+    started = true;
+    if (!playFile()) { loadFile(FILES[bgmKey]); startSynth(); }
+    // ほかの村の曲も、少したってから裏で読んでおく
+    if (!preloaded) { preloaded = true; setTimeout(() => Object.values(FILES).forEach(loadFile), 8000); }
+  }
+
   // 曲を切りかえる（村の id か 'giant'）。同じなら何もしない
   function setBgm(key) {
+    bgmKey = FILES[key] ? key : 'camp';
     const l = PLAYLIST[key] || PLAYLIST.camp;
-    if (l === list) return;
-    list = l; songIdx = 0; loops = 0; step = 0; song = SONGS[list[0]];
+    if (l !== list) { list = l; songIdx = 0; loops = 0; step = 0; song = SONGS[list[0]]; }
+    if (!started) return;
+    if (!playFile()) { stopFile(); loadFile(FILES[bgmKey]); startSynth(); }
   }
 
   function setMuted(m) {
@@ -177,5 +225,6 @@ const Sound = (() => {
     if (master) master.gain.value = m ? 0 : 1;
   }
 
-  return { sfx, startBgm, setBgm, setMuted };
+  // nowPlaying：いま流れている曲（ファイル名／'synth'＝ピコピコ）。動作確認用
+  return { sfx, startBgm, setBgm, setMuted, get nowPlaying() { return srcName || (bgmTimer ? 'synth' : null); } };
 })();
