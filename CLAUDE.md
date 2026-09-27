@@ -19,6 +19,8 @@
 - 次にやることのガイド（上の吹き出し＋黄色い矢印）は `currentGoal()`。
 - セーブは localStorage（キー `snowGrill.v2`、村ごとに解放数・救った人数・仲間 `crew: [{type, kind}]`）。`?reset` で消去。
 - 戦闘：白クマは近づく（または攻撃される）と追いかけ、「ため」（赤い円）→ひっかき。数値は `CONFIG.combat`。
+- レベル：`VILLAGES` の `level`（無ければ 1）。全体マップはレベルごとのタブ（`LEVELS`・`openMap(open, level)`）。村は配列の順につながり、前の村を終えると次がひらく（レベル2の最初の村は王都のあと）。
+- 豪傑（レベル2から）：大斧の大きな助っ人（`h.brute`、絵は `brute_idle/attack/down`）。`CONFIG.brutes[レベル]` に「目標人数の何割を救ったら来るか」を1人ずつ並べる（決戦は最初から全員）。セーブには入れず、村に入ったとき・人を救ったときに `syncBrutes()` で人数を合わせる。一撃でまわりの白クマをまとめて斬って吹き飛ばす（`bruteSmash`、数値は `CONFIG.helper.brute`）。志願者の枠には数えない。レベル3を作るときは `CONFIG.brutes[3]` に人数を足す。
 - 助っ人は解放ではなく「志願者」から仲間になる（`CONFIG.volunteer`、`maybeVolunteer()` / `openRecruit()`）。手伝う役割は村人の種類で決まる（`CONFIG.villagerRole`）。見た目は役割ごとの服装。
 - 領地（歩ける範囲）は `updateTerritory()`。解放した設備と次のパッドのまわりまで広がる。狩り場は `G.hunt`（狩り場拡張で `CONFIG.hunt` まで）。
 - 時間差の処理に setTimeout は使わない。`later(秒, fn)`（ゲーム内時間、村を移ると取り消し）を使う。

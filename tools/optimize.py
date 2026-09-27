@@ -16,7 +16,8 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC, DST = ROOT / "assets", ROOT / "img"
-BIG = {"bear_boss": 384, "grill_on": 320, "grill_off": 320, "counter": 320, "tent": 320, "igloo": 320}
+MIRROR = {"throne_ice"}   # 格子の床（assets/grounds/ に1マス分だけ切り出して置く）
+BIG = {"bear_boss": 384, "brute": 320, "grill_on": 320, "grill_off": 320, "counter": 320, "tent": 320, "igloo": 320}
 
 
 def main() -> None:
@@ -38,6 +39,14 @@ def main() -> None:
     # 村ごとの地面 assets/grounds/*.png … 半分ずらした絵と、ふちに向かってなめらかに混ぜて、つなぎ目の出ないタイルにする
     #（反転してつなぐと、岩などの模様が左右対称に並んで見えてしまうため）
     for src in sorted((SRC / "grounds").glob("*.png")):
+        if src.stem in MIRROR:   # 床のタイルのような格子の模様は、ずらして混ぜると格子がにじむので、反転してつなぐ
+            t = Image.open(src).convert("RGB").resize((256, 256), Image.LANCZOS)
+            tile = Image.new("RGB", (512, 512))
+            tile.paste(t, (0, 0)); tile.paste(t.transpose(Image.FLIP_LEFT_RIGHT), (256, 0))
+            tile.paste(t.transpose(Image.FLIP_TOP_BOTTOM), (0, 256)); tile.paste(t.transpose(Image.ROTATE_180), (256, 256))
+            tile.save(DST / f"ground_{src.stem}.webp", "WEBP", quality=80, method=6)
+            n += 1
+            continue
         t = Image.open(src).convert("RGB").resize((512, 512), Image.LANCZOS)
         out = np.asarray(t, dtype=np.float32)
         d = np.abs(np.linspace(-1, 1, 512))                  # まんなか 0 → ふち 1

@@ -16,8 +16,15 @@ const CHARS = {
   kid: { name: '峠の子ども', img: 'villager_child' },
   sailor: { name: '船乗りガンツ', img: 'villager_m' },
   happy: { name: '王都の人々', img: 'villager_happy' },
+  // レベル2
+  oba: { name: '湯の里のおばば', img: 'villager_old_f' },
+  garu: { name: '豪傑ガルド', img: 'brute_idle' },
+  dwan: { name: '鉱山のドワン', img: 'villager_old_m' },
+  noel: { name: '森の少女ノエル', img: 'villager_girl' },
+  captain: { name: '砦の隊長', img: 'swordsman' },
 };
 
+// level: レベル（全体マップのタブ）。書いていなければ 1
 // map: 全体マップ上の位置（%）
 // bearHp: 白クマの体力の倍率、meatBonus: 1頭から落ちる肉の追加、extraBears: 同時に出る白クマの追加
 // priceMul: 設備の値段の倍率、want: お客さんが欲しがる肉の数、snow: 雪の量、tint: 地面に重ねる色
@@ -126,10 +133,120 @@ const VILLAGES = [
       ['narr', '北の大地に、春がやってきた。'],
       ['rina', 'やったわね、ユキト！ …でも、グリルの火はまだ消さないでしょ？'],
       ['hero', 'もちろん！ おなかをすかせた人がいる限り、焼き続けるさ！'],
-      ['narr', '～ おしまい ～　（このあとも自由に遊べます）'],
+      ['narr', '～ レベル1 おしまい ～'],
+      ['narr', '…ところが、北の山脈の向こうから、もっと冷たい風が吹きはじめた。'],
+      ['rina', '山の向こうにも村があるの。寒波の本当の元は、あっちかもしれない…！'],
+      ['narr', 'レベル2「氷の果て」がひらいた！　全体マップのタブから行けます'],
+    ],
+  },
+  // =================== レベル2「氷の果て」：敵が強い。豪傑（大きな斧の助っ人）が1〜2人来てくれる ===================
+  {
+    id: 'onsen', level: 2, icon: 'campfire', name: '湯けむりの雪の里', goal: 280,
+    map: { x: 26, y: 86 }, bearHp: 3.4, meatBonus: 3, extraBears: 2, priceMul: 3.6, want: [2, 5], snow: 90, tint: 'rgba(255,200,170,.08)',
+    intro: [
+      ['narr', '山脈をこえると、湯けむりの立つ里があった。けれど温泉まで凍りはじめている…'],
+      ['oba', 'おや、旅の人かい。この寒さじゃ、湯も肉もあったまらないねえ…'],
+      ['garu', 'ガッハッハ！ 腹がへっては戦えん！ おぬしが噂の肉焼き勇者か！'],
+      ['garu', 'わしはガルド。この大斧で、白クマなんぞまとめて吹き飛ばしてやるわい！'],
+      ['hero', '心強い！ ガルドさん、いっしょに里のみんなを助けよう！'],
+    ],
+    outro: [
+      ['oba', '湯もみんなの心も、ぽかぽかになったよ。ありがとうねえ。'],
+      ['garu', 'ふう、いい汗をかいたわい！ 次は山の上の鉱山町だな！'],
+    ],
+  },
+  {
+    id: 'mine', level: 2, icon: 'ice_rock', name: '氷晶の鉱山町', goal: 330,
+    map: { x: 70, y: 74 }, bearHp: 3.8, meatBonus: 3, extraBears: 2, priceMul: 4.1, want: [2, 5], snow: 110, tint: 'rgba(120,200,255,.10)',
+    intro: [
+      ['dwan', '坑道が氷の結晶でうまっちまって、仕事にならんのじゃ。腹もへったわい…'],
+      ['hero', 'まずはあったかい肉で元気を出してもらおう！'],
+      ['garu', 'ここの白クマは硬いぞ。わしの大斧の出番だな！'],
+    ],
+    outro: [
+      ['dwan', 'これで坑道にもどれるわい！ 礼じゃ、この先の谷は気をつけろよ。'],
+      ['dwan', '雪崩の谷に、山のようにでかい巨人が居すわっておるんじゃ…'],
+    ],
+  },
+  {
+    id: 'battle3', level: 2, name: '雪崩の谷の決戦', battle: true, icon: 'giant_idle',
+    map: { x: 48, y: 62 }, bearHp: 4, meatBonus: 3, extraBears: 2, priceMul: 4.4, want: [2, 5], snow: 190, tint: 'rgba(200,210,235,.18)',
+    giant: { name: '雪崩の巨人', hpMul: 3.6, dmgMul: 2, tint: 'saturate(.7) brightness(1.08)' },
+    intro: [
+      ['rina', '谷の奥から雪崩のような足音…！ 群れを連れて巨人が来るわ！'],
+      ['garu', 'ガッハッハ！ でかいほど斬りがいがあるわい！'],
+      ['hero', 'バリケードを守りながら、みんなで迎え撃とう！'],
+    ],
+    outro: [
+      ['garu', 'どうだ見たか！ 雪崩もわしらの勢いには勝てんかったな！'],
+      ['rina', 'この先は樹氷の森。道に迷わないようにね。'],
+    ],
+  },
+  {
+    id: 'forest', level: 2, icon: 'pine', name: '樹氷の森の村', goal: 400,
+    map: { x: 24, y: 48 }, bearHp: 4.5, meatBonus: 4, extraBears: 2, priceMul: 4.8, want: [3, 5], snow: 120, tint: 'rgba(170,230,210,.10)',
+    intro: [
+      ['noel', '森の木がみんな凍って、木の実もとれないの…。村のみんな、ふるえてる。'],
+      ['hero', 'ノエル、もう大丈夫。ここにもグリルを立てよう！'],
+      ['garu', 'ちびすけ、腹いっぱい食わせてやるからな！'],
+    ],
+    outro: [
+      ['noel', 'あったかい…！ ユキトさん、ガルドさん、ありがとう！'],
+      ['noel', '森をぬけた先に、氷の壁でかこまれた砦があるの。兵隊さんたちが寒さで動けないって…'],
+    ],
+  },
+  {
+    id: 'fortress', level: 2, icon: 'watchtower', name: '氷壁の砦', goal: 460,
+    map: { x: 68, y: 38 }, bearHp: 5, meatBonus: 4, extraBears: 3, priceMul: 5.4, want: [3, 6], snow: 140, tint: 'rgba(150,170,220,.12)',
+    boss: true,
+    intro: [
+      ['captain', '砦の兵はみな凍えて、剣も持てぬ…。そのうえ大白クマまでうろついている。'],
+      ['hero', '肉を焼いて、みんなの力をとりもどそう！'],
+      ['garu', '大白クマか。相手にとって不足なしだわい！'],
+    ],
+    outro: [
+      ['captain', '兵たちが立ち上がった！ 恩にきるぞ、肉焼きの勇者たち！'],
+      ['captain', 'だが極光の氷原に、とてつもない大巨人がいる。気をつけて進め！'],
+    ],
+  },
+  {
+    id: 'battle4', level: 2, name: '極光の大巨人', battle: true, icon: 'giant_idle',
+    map: { x: 44, y: 24 }, bearHp: 5.2, meatBonus: 4, extraBears: 3, priceMul: 5.8, want: [3, 6], snow: 150, tint: 'rgba(170,140,240,.16)',
+    giant: { name: '極光の大巨人', hpMul: 5.2, dmgMul: 2.6, tint: 'hue-rotate(230deg) saturate(1.5) brightness(1.05)' },
+    intro: [
+      ['narr', '空にゆらめくオーロラの下、見上げるほどの大巨人が立ちはだかる…！'],
+      ['rina', 'これまでで一番強い相手よ。強化はしっかりしてきた？'],
+      ['garu', 'ガッハッハ！ わしら全員でかかれば、どんな巨人も倒せるわい！'],
+    ],
+    outro: [
+      ['rina', 'やった…！ 極光の大巨人をたおしたわ！'],
+      ['hero', 'この先が、白熊王の氷の城…！'],
+    ],
+  },
+  {
+    id: 'throne', level: 2, icon: 'bear_boss', name: '白熊王の氷の城', goal: 560,
+    map: { x: 60, y: 10 }, bearHp: 6, meatBonus: 5, extraBears: 3, priceMul: 6.5, want: [3, 6], snow: 160, tint: 'rgba(140,160,240,.14)',
+    boss: true,
+    intro: [
+      ['narr', '氷でできた城。玉座のまわりを、巨大な白クマたちが守っている…'],
+      ['rina', 'ここが寒波の本当の元…！ ユキト、ガルド、行くわよ！'],
+      ['garu', '最後の大仕事だ！ 腹いっぱいの肉で、城ごとあっためてやるわい！'],
+    ],
+    outro: [
+      ['narr', '城に集まった人々の笑顔が、氷の城をゆっくりととかしていった――'],
+      ['garu', 'ガッハッハ！ やったな相棒！ 最高の肉だったわい！'],
+      ['rina', 'これで北の果ての寒波もおしまい…かしら？'],
+      ['hero', 'また寒い日が来ても、グリルの火があればきっと大丈夫さ！'],
+      ['narr', '～ レベル2 おしまい ～　（このあとも自由に遊べます）'],
     ],
   },
 ];
+
+const LEVELS = [
+  { n: 1, name: '北の大地' },
+  { n: 2, name: '氷の果て' },
+];
+const levelOf = v => v.level || 1;
 
 const villageById = id => VILLAGES.find(v => v.id === id) || VILLAGES[0];
 
@@ -189,7 +306,13 @@ function villageUnlocked(i) {
   return i === 0 || !!(SAVE.villages[VILLAGES[i - 1].id] || {}).done;
 }
 
-function openMap(open = true) {
+// レベルがひらいている＝そのレベルの最初の村に行ける
+function levelUnlocked(n) {
+  const i = VILLAGES.findIndex(v => levelOf(v) === n);
+  return i >= 0 && villageUnlocked(i);
+}
+
+function openMap(open = true, level) {
   G.mapOpen = open;
   G.paused = open;
   G.joy = null;
@@ -198,13 +321,28 @@ function openMap(open = true) {
   $('map').classList.toggle('hidden', !open);
   if (!open) return;
   Sound.sfx.click();
+  // 見せるレベル（はじめは今いる村のレベル）。タブで切りかえる
+  G.mapLevel = level || levelOf(G.v);
+  const lv = LEVELS.find(l => l.n === G.mapLevel) || LEVELS[0];
+  $('map-title').textContent = `🗺 レベル${lv.n}　${lv.name}`;
+  $('map-tabs').innerHTML = '';
+  LEVELS.forEach(l => {
+    const t = document.createElement('button');
+    const ok = levelUnlocked(l.n);
+    t.className = 'map-tab' + (l.n === G.mapLevel ? ' on' : '');
+    t.textContent = ok ? `レベル${l.n}` : `🔒 レベル${l.n}`;
+    t.disabled = !ok;
+    t.onclick = () => openMap(true, l.n);
+    $('map-tabs').appendChild(t);
+  });
   const nodes = $('map-nodes');
   nodes.innerHTML = '';
-  // 村と村をつなぐ道
-  const path = VILLAGES.map(v => `${v.map.x},${v.map.y}`).join(' ');
-  const done = VILLAGES.filter((v, i) => villageUnlocked(i)).map(v => `${v.map.x},${v.map.y}`).join(' ');
+  // 村と村をつなぐ道（このレベルの村だけ）
+  const here = VILLAGES.map((v, i) => ({ v, i })).filter(o => levelOf(o.v) === G.mapLevel);
+  const path = here.map(o => `${o.v.map.x},${o.v.map.y}`).join(' ');
+  const done = here.filter(o => villageUnlocked(o.i)).map(o => `${o.v.map.x},${o.v.map.y}`).join(' ');
   $('map-path').innerHTML = `<polyline points="${path}" class="road"/><polyline points="${done}" class="road open"/>`;
-  VILLAGES.forEach((v, i) => {
+  here.forEach(({ v, i }) => {
     const st = SAVE.villages[v.id] || {};
     const unlocked = villageUnlocked(i);
     const b = document.createElement('button');

@@ -325,6 +325,7 @@ function enterVillage(id) {
     h.kind = m.kind;
     G.helpers.push(h);
   });
+  syncBrutes(true);
   nextPad();
   for (let i = 0; i < 80; i++) updateCustomers(0.25);   // 村に着いたときから、肉を待つ人の列は満員
   for (let i = 0; i < G.maxBears; i++) spawnBear(false);
@@ -918,7 +919,7 @@ function updateDrops(dt) {
       if (m.t > 0) return;
       // 近くにいる人（プレイヤー・ハンター）が拾う
       const takers = (G.player.downT > 0 ? [] : [{ o: G.player, cap: G.player.cap, r: CONFIG.player.pickupRange }])
-        .concat(G.helpers.filter(h => h.type === 'sword' && !h.downT).map(h => ({ o: h, cap: CONFIG.helper.sword.cap, r: CONFIG.helper.sword.pickup })));
+        .concat(G.helpers.filter(h => h.type === 'sword' && !h.downT).map(h => { const H = h.brute ? CONFIG.helper.brute : CONFIG.helper.sword; return { o: h, cap: H.cap, r: H.pickup }; }));
       for (const tk of takers) {
         const reserved = G.drops.filter(d => d.state === 'fly' && d.holder === tk.o).length;
         if (dist(m, tk.o) < tk.r && tk.o.stack.length + reserved < tk.cap) {
@@ -1169,6 +1170,7 @@ function updateCustomers(dt) {
           front.exit = { x: Math.random() < 0.5 ? -60 : CONFIG.world.w + 60, y: rand(1150, 1350) };
           c.queue.shift();
           G.rescued++;
+          syncBrutes(false);
           const M = CONFIG.milestone;
           if (G.rescued % M.every === 0) {
             const bonus = Math.round(M.bonus * G.v.priceMul);
@@ -1235,7 +1237,46 @@ const ROLES = [
     reply: { boy: '高いところ、好き！', man: '目には自信があるんだ。まかせな！', woman: '弓なら得意よ。見張りはまかせて！' } },
 ];
 
-function crewCount(type) { return G.helpers.filter(h => h.type === type).length; }
+// ---- 豪傑（レベル2から）----
+// レベルと救った人数から、いまいるはずの豪傑の人数に合わせる。first＝村に入ったとき（演出なし）
+function syncBrutes(first) {
+  const at = CONFIG.brutes[levelOf(G.v)] || [];
+  const want = at.filter(t => G.v.battle || G.rescued >= t * G.v.goal).length;
+  while (G.helpers.filter(h => h.brute).length < want) {
+    const n = G.helpers.filter(h => h.brute).length;
+    const H = CONFIG.helper.brute;
+    const h = makeHelper('sword');
+    Object.assign(h, { brute: true, n: 10 + n, hp: H.hp, maxHp: H.hp, x: 300 + n * 90, y: 900 });
+    G.helpers.push(h);
+    if (!first) {
+      h.pop = 0;
+      say(h, n ? 'わしの相棒も来たぞ！ ガッハッハ！' : 'ガッハッハ！ 豪傑ガルド、参上！', 3);
+      banner('豪傑が仲間になった！', '大斧の一撃で、白クマをまとめて吹き飛ばす', 2.6);
+      sparks(h.x, h.y - 50, 30, ['#ffd23f', '#fff', '#7fe0ff']);
+      Sound.sfx.unlock();
+    }
+  }
+}
+// 大斧の一撃：ねらった白クマのまわりをまとめて斬り、吹き飛ばす
+function bruteSmash(h, target) {
+  const H = CONFIG.helper.brute;
+  h.attackT = 0.32;
+  G.shake = Math.max(G.shake, 7);
+  fxAt('ui/explosion', target.x, target.y - 20, 150);
+  fxAt('ui/slash', target.x - h.face * 10, target.y - 55, 110, h.face > 0 ? -0.3 : 0.3 + Math.PI);
+  sparks(target.x, target.y - 20, 18, ['#dff4ff', '#9fd7ff', '#fff']);
+  G.bears.filter(b => b.state !== 'dead' && (b === target || dist(b, target) < H.splash)).forEach(b => {
+    hitBear(b, H.damage, h);
+    if (!b.giant && b.state !== 'dead') {   // 吹き飛ばす（巨人は動かない）
+      const ang = Math.atan2(b.y - h.y, b.x - h.x);
+      b.x += Math.cos(ang) * H.knock;
+      b.y += Math.sin(ang) * H.knock * 0.6;
+    }
+  });
+  if (!h.say && Math.random() < 0.35) say(h, CONFIG.bruteLines[randInt(0, CONFIG.bruteLines.length - 1)], 1.2);
+}
+
+function crewCount(type) { return G.helpers.filter(h => h.type === type && !h.brute).length; }
 function roleOpen(type) {
   if (type === 'archer') return !!G.tower && crewCount('archer') < 1;
   return crewCount(type) < CONFIG.volunteer.max[type];
@@ -1364,8 +1405,8 @@ function updateHelpers(dt) {
     }
     if (h.maxHp) h.hp = Math.min(h.maxHp, h.hp + 3 * dt);
     if (h.type === 'sword') {
-      // 斧の助っ人：白クマを囲んで何度も斬る → 落ちた肉をまとめて拾う → 背中がいっぱいになったらグリルへ
-      const H = CONFIG.helper.sword;
+      // 斧の助っ人：白クマを囲んで何度も斬る → 落ちた肉をまとめて拾う → 背中がいっぱいになったらグリルへ（豪傑も同じ動き）
+      const H = h.brute ? CONFIG.helper.brute : CONFIG.helper.sword;
       const bears = G.bears.filter(b => b.state !== 'dead');
       const loose = G.drops.filter(m => m.state === 'ground' && m.y < 700);
       h.idleT = !bears.length && !loose.length ? h.idleT + dt : 0;
@@ -1385,13 +1426,16 @@ function updateHelpers(dt) {
           h.face = b.x > h.x ? 1 : -1;
           if (h.atkT <= 0) {
             h.atkT = H.attackCd * rand(0.9, 1.1);
-            h.attackT = 0.2;
-            fxAt('ui/slash', b.x - h.face * 10, b.y - 45, 60, h.face > 0 ? -0.3 : 0.3 + Math.PI);
-            hitBear(b, H.damage, h);
+            if (h.brute) bruteSmash(h, b);
+            else {
+              h.attackT = 0.2;
+              fxAt('ui/slash', b.x - h.face * 10, b.y - 45, 60, h.face > 0 ? -0.3 : 0.3 + Math.PI);
+              hitBear(b, H.damage, h);
+            }
           }
         }
       } else {
-        moveTo(h, { x: 200 + h.n * 55, y: 300 }, H.speed * 0.5, dt);   // 狩り場で次の白クマを待つ
+        moveTo(h, { x: 200 + h.n * 55 + (h.brute ? 30 : 0), y: h.brute ? 380 : 300 }, H.speed * 0.5, dt);   // 狩り場で次の白クマを待つ
       }
     } else if (h.type === 'archer') {
       // 弓使い：柵のそばから動かず、届く白クマに矢を射る
@@ -2278,6 +2322,20 @@ function drawHelper(h) {
     if (down) { ctx.font = '16px serif'; ctx.textAlign = 'center'; ctx.fillText('💦', h.x + 20, h.y - hh + 4); }
     if (h.maxHp) hpBar(h, h.y - hh - 12, 40);
     drawSay(h, h.y - hh - (h.maxHp ? 18 : 8));
+    return;
+  }
+  if (h.brute) {   // 豪傑：大きく描く
+    const name = down ? 'brute_down' : h.attackT > 0 ? 'brute_attack' : 'brute_idle', hh = 118;
+    ctx.save();
+    ctx.translate(h.x, h.y);
+    const sc = popScale(h);
+    ctx.scale(sc, sc);
+    ctx.translate(-h.x, -h.y);
+    drawStack(h, h.y - 70 - bob);
+    drawSprite(name, h.x, h.y - bob, hh, { flip: h.face < 0, flash: h.hurtT > 0.15, alpha: down ? 0.85 : 1 });
+    ctx.restore();
+    if (h.maxHp) hpBar(h, h.y - hh - 10, 54);
+    drawSay(h, h.y - hh - 16);
     return;
   }
   let name, downImg = false;

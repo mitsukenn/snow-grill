@@ -78,6 +78,77 @@ const SCENES = {
     light: [['rgba(80,175,235,.18)', 'rgba(150,215,255,.08)']],
   },
 };
+// ---- レベル2「氷の果て」 ----
+Object.assign(SCENES, {
+  onsen: {
+    ground: { field: 'fluffy', camp: 'onsen_stone' },
+    decor: [
+      ['@spring', 70, 200, 70], ['@spring', 650, 430, 80], ['pine', 700, 90, 120], ['pine', 20, 380, 105],
+      ['@lantern', 110, 620, 80], ['@lantern', 615, 620, 80],
+      ['@spring', 75, 1160, 80], ['@spring', 650, 1190, 70], ['tent', 60, 1270, 110], ['tent', 660, 1300, 110], ['igloo', 70, 1380, 90], ['logs', 300, 1330, 50],
+    ],
+    lights: [[110, 620], [615, 620]],
+    light: [['rgba(255,200,150,.14)', 'rgba(255,220,190,.06)']],
+  },
+  mine: {
+    ground: { field: 'mine_crystal', camp: 'powder' },
+    over: () => cliffs('#6f7a8c', '#4c5566'),
+    decor: [
+      ['@crystal', 120, 180, 70], ['@crystal', 600, 150, 80], ['@cart', 330, 110, 60], ['@crystal', 110, 610, 60], ['@crystal', 615, 615, 65],
+      ['@cart', 70, 1160, 60], ['@crystal', 660, 1180, 70], ['@lantern', 100, 880, 80], ['@lantern', 640, 880, 80], ['tent', 60, 1270, 110], ['tent', 660, 1300, 110], ['igloo', 70, 1380, 90], ['logs', 300, 1330, 50],
+    ],
+    edge: { pine: 'rock', bush: '@crystal' },
+    lights: [[100, 880], [640, 880]],
+    light: [['rgba(60,80,120,.22)', 'rgba(90,140,200,.10)']],
+  },
+  battle3: {
+    ground: { field: 'wind', camp: 'powder' },
+    over: () => cliffs('#aab3c4', '#7b8598'),
+    wind: true,
+    decor: [['snowdrift', 120, 170, 80], ['snowdrift', 600, 140, 90], ['rock', 330, 110, 60], ['snowdrift', 110, 620, 70], ['rock', 610, 620, 55], ['tent', 60, 1270, 110], ['tent', 660, 1300, 110], ['igloo', 70, 1380, 90], ['logs', 300, 1330, 50]],
+    light: [['rgba(120,130,160,.22)', 'rgba(150,160,190,.10)']],
+  },
+  forest: {
+    ground: { field: 'forest_frost', camp: 'shore' },
+    decor: [
+      ['pine', 20, 60, 130], ['pine', 700, 90, 140], ['pine', 30, 330, 120], ['pine', 700, 380, 130], ['bush', 330, 110, 60],
+      ['pine', 690, 600, 110], ['pine', 25, 610, 115], ['bush', 120, 620, 50], ['bush', 610, 620, 55],
+      ['pine', 20, 1150, 120], ['pine', 705, 1180, 120], ['@fishrack', 90, 1200, 70], ['tent', 60, 1270, 110], ['tent', 660, 1300, 110], ['igloo', 70, 1380, 90], ['logs', 300, 1330, 50],
+    ],
+    edge: { bush: 'pine', snowdrift: 'bush' },
+    light: [['rgba(150,230,200,.14)', 'rgba(200,245,230,.06)']],
+  },
+  fortress: {
+    ground: { field: 'powder', camp: 'fort_brick' },
+    over: () => iceWall(),
+    decor: [
+      ['@banner', 150, 140, 110], ['@banner', 570, 140, 110], ['@crate', 110, 620, 50], ['@crate', 620, 620, 50],
+      ['@banner', 90, 880, 100], ['@banner', 640, 880, 100], ['@crate', 70, 1160, 55], ['tent', 60, 1270, 110], ['tent', 660, 1300, 110], ['igloo', 70, 1380, 90], ['logs', 300, 1330, 50],
+    ],
+    edge: { bush: '@crate' },
+    light: [['rgba(110,130,190,.18)', 'rgba(150,170,220,.08)']],
+  },
+  battle4: {
+    ground: { field: 'glacier_ice', camp: 'powder', veil: 'rgba(200,180,255,.32)' },
+    over: () => cliffs('#c4b4f0', '#7d6bc2', true),
+    decor: [['ice_rock', 120, 170, 80], ['ice_rock', 600, 140, 90], ['@crystal', 330, 110, 70], ['ice_rock', 110, 620, 70], ['@crystal', 610, 620, 70], ['tent', 60, 1270, 110], ['tent', 660, 1300, 110], ['igloo', 70, 1380, 90], ['logs', 300, 1330, 50]],
+    night: true,
+    light: [['rgba(40,30,100,.30)', 'rgba(60,40,120,.18)']],
+  },
+  throne: {
+    ground: { field: 'throne_ice', camp: 'capital_stone' },
+    over: () => { castleWall(); },
+    decor: [
+      ['@banner', 150, 140, 110], ['@banner', 570, 140, 110], ['@crystal', 25, 380, 90], ['@crystal', 700, 380, 90],
+      ['@lantern', 110, 620, 80], ['@lantern', 615, 620, 80], ['@lantern', 100, 850, 80], ['@lantern', 640, 850, 80],
+      ['@lantern', 100, 1100, 80], ['@lantern', 660, 1120, 80], ['tent', 60, 1290, 100], ['tent', 660, 1300, 100],
+    ],
+    lights: [[110, 620], [615, 620], [100, 850], [640, 850], [100, 1100], [660, 1120]],
+    night: true,
+    light: [['rgba(20,30,90,.36)', 'rgba(40,40,110,.26)']],
+  },
+});
+
 const scene = () => (G.v && SCENES[G.v.id]) || SCENES.camp;
 
 // 村ごとの設備の絵（ChatGPT で作った img/<名前>_<村の id>.webp）。無い村・読めないときはいつもの絵
@@ -155,6 +226,49 @@ const PROPS = {
     ctx.strokeStyle = '#c9a36a'; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(x - 8, y - h * 0.6); ctx.lineTo(x + 8, y - h * 0.55); ctx.moveTo(x - 8, y - h * 0.45); ctx.lineTo(x + 8, y - h * 0.4); ctx.stroke();
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.ellipse(x, y - h, 10, 5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  },
+  spring(x, y, h) {     // 湯けむりの立つ温泉
+    const w = h * 1.4, t = G.time;
+    ctx.save();
+    ctx.fillStyle = '#8a7a6a';
+    ctx.beginPath(); ctx.ellipse(x, y - h * 0.15, w * 0.62, h * 0.32, 0, 0, Math.PI * 2); ctx.fill();
+    const g = ctx.createRadialGradient(x, y - h * 0.18, 4, x, y - h * 0.15, w * 0.55);
+    g.addColorStop(0, '#8fe6e0'); g.addColorStop(1, '#3fa6b8');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.ellipse(x, y - h * 0.16, w * 0.52, h * 0.24, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.ellipse(x - w * 0.3, y - h * 0.32, w * 0.2, h * 0.07, 0, 0, Math.PI * 2); ctx.fill();
+    for (let i = 0; i < 3; i++) {   // 湯けむり
+      const k = (t * 0.35 + i / 3) % 1;
+      ctx.fillStyle = `rgba(255,255,255,${0.45 * (1 - k)})`;
+      ctx.beginPath(); ctx.arc(x - w * 0.2 + i * w * 0.2 + Math.sin(t + i) * 6, y - h * 0.2 - k * h * 1.1, 10 + k * 16, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  },
+  crystal(x, y, h) {    // 光る氷の結晶
+    ctx.save();
+    [[-0.28, 0.7, -0.25], [0, 1, 0], [0.26, 0.6, 0.3]].forEach(([dx, s, r]) => {
+      ctx.save();
+      ctx.translate(x + dx * h, y); ctx.rotate(r);
+      const hh = h * s, w = hh * 0.26;
+      ctx.fillStyle = '#9fe3ff';
+      ctx.beginPath(); ctx.moveTo(-w, 0); ctx.lineTo(-w, -hh * 0.7); ctx.lineTo(0, -hh); ctx.lineTo(w, -hh * 0.7); ctx.lineTo(w, 0); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.7)';
+      ctx.beginPath(); ctx.moveTo(-w * 0.2, 0); ctx.lineTo(-w * 0.2, -hh * 0.72); ctx.lineTo(0, -hh * 0.95); ctx.lineTo(0, 0); ctx.fill();
+      ctx.restore();
+    });
+    ctx.restore();
+  },
+  cart(x, y, h) {       // 鉱山のトロッコ
+    const w = h * 1.3;
+    ctx.save();
+    ctx.fillStyle = '#6b4a2e'; ctx.fillRect(x - w / 2, y - h * 0.75, w, h * 0.55);
+    ctx.fillStyle = '#9fe3ff';
+    ctx.beginPath(); ctx.moveTo(x - w * 0.4, y - h * 0.75); ctx.lineTo(x - w * 0.15, y - h); ctx.lineTo(x + w * 0.1, y - h * 0.8); ctx.lineTo(x + w * 0.35, y - h * 0.95); ctx.lineTo(x + w * 0.42, y - h * 0.75); ctx.fill();
+    ctx.fillStyle = '#3a3f4a';
+    [-0.3, 0.3].forEach(k => { ctx.beginPath(); ctx.arc(x + k * w, y - h * 0.15, h * 0.15, 0, Math.PI * 2); ctx.fill(); });
+    ctx.fillStyle = '#fff'; roundRect(x - w / 2 - 2, y - h * 0.78, w + 4, 6, 3); ctx.fill();
     ctx.restore();
   },
   sign(x, y, h) {       // 峠の道しるべ（画像があればそれを使う）
@@ -316,6 +430,26 @@ function castleWall() {
     ctx.fillStyle = 'rgba(255,214,110,.95)';
     roundRect(x - 8, top + 30 * s, 16, 24, 8); ctx.fill();               // 灯りのともる窓
   });
+}
+
+// 砦：狩り場の奥に氷のブロックの壁と見張り塔
+function iceWall() {
+  const W = CONFIG.world.w, a = G.hunt, base = a.y - 5;
+  ctx.fillStyle = '#a9d6ee'; ctx.fillRect(-40, -40, W + 80, base + 40);
+  ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 2;
+  for (let y = -10, r = 0; y < base; y += 24, r++) {
+    ctx.beginPath(); ctx.moveTo(-40, y); ctx.lineTo(W + 40, y); ctx.stroke();
+    for (let x = (r % 2) * 32; x < W; x += 64) { ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + 24); ctx.stroke(); }
+  }
+  ctx.fillStyle = '#cdeaf8';
+  for (let x = -20; x < W + 40; x += 48) ctx.fillRect(x, base - 16, 28, 18);
+  [[90, 1], [W - 90, 1]].forEach(([x, s]) => {
+    const w = 64 * s, top = base - 140 * s;
+    ctx.fillStyle = '#b8e0f4'; ctx.fillRect(x - w / 2, top, w, base - top + 8);
+    ctx.fillStyle = '#5a8fc8';
+    ctx.beginPath(); ctx.moveTo(x - w / 2 - 8, top); ctx.lineTo(x, top - 50 * s); ctx.lineTo(x + w / 2 + 8, top); ctx.fill();
+  });
+  ctx.fillStyle = '#fff'; ctx.fillRect(-40, base, W + 80, 7);
 }
 
 // ---------------- 光（画面に重ねる。W, H は画面の大きさ） ----------------

@@ -119,6 +119,9 @@ const Sound = (() => {
   const PLAYLIST = {
     camp: ['yukimichi', 'danro'], lake: ['kosui', 'hyomen'], pass: ['fubuki', 'toge'], port: ['minato', 'yuyake'],
     capital: ['outo', 'aurora'], battle1: ['toge', 'fubuki'], battle2: ['hyomen', 'toge'], giant: ['kessen', 'kyojin'],
+    // レベル2
+    onsen: ['danro', 'yuyake'], mine: ['toge', 'hyomen'], battle3: ['fubuki', 'toge'], forest: ['kosui', 'aurora'],
+    fortress: ['outo', 'fubuki'], battle4: ['aurora', 'hyomen'], throne: ['outo', 'aurora'],
   };
   const midi = n => 440 * Math.pow(2, (n - 69) / 12);
   let list = PLAYLIST.camp, song = SONGS[list[0]], songIdx = 0, loops = 0, step = 0, nextTime = 0;

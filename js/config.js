@@ -42,6 +42,8 @@ const CONFIG = {
     sword: { speed: 145, damage: 1, attackCd: 0.55, reach: 85, cap: 6, hp: 40, pickup: 90, max: 8 },   // 斧の助っ人（モブ）：戦って肉を集め、いっぱいになったらグリルへ
     archer: { range: 330, damage: 1, attackCd: 0.9, post: { x: 120, y: 650 } },   // 弓使い：見張り台の上から矢を射る（外には出ない）
     carrier: { speed: 170, cap: 6 },
+    // 豪傑（レベル2から）：大斧の一撃でまわりの白クマをまとめて斬り、吹き飛ばす。たくさん運ぶ
+    brute: { speed: 165, damage: 4, attackCd: 0.85, reach: 100, splash: 130, knock: 55, cap: 16, hp: 180, pickup: 120 },
     downSec: 10,             // 疲れてテントで休む秒数（休んだらまた戻ってくる）
     home: { x: 80, y: 1290 },   // 休みに帰るテント
   },
@@ -53,6 +55,11 @@ const CONFIG = {
     spot: { x: 390, y: 1045 },   // 志願者が待っている場所
     max: { sword: 4, carrier: 2, archer: 1 },   // 多すぎると楽になりすぎるので控えめに   // 役割ごとの最大人数（弓は見張り台の数）
   },
+
+  // ---- 豪傑が来るタイミング：レベルごとに「目標人数の何割を救ったら来るか」を1人ずつ（決戦の村は最初から全員）
+  //      レベル3を作るときは、ここに人数を足す ----
+  brutes: { 1: [], 2: [0, 0.5] },
+  bruteLines: ['ガッハッハ！', 'うおおおお！', 'まとめてかかってこい！', 'どっせええい！', 'わしにまかせろ！'],
 
   // ---- 襲撃：ふつうの村でも、ときどき白クマの群れが攻めてくる ----
   raid: {
@@ -145,6 +152,7 @@ const CONFIG = {
     hero_walk1: '🧔', hero_walk2: '🧔', hero_walk3: '🧔', hero_walk4: '🧔', hero_swing_up: '🧔', hero_swing: '🧔', hero_idle2: '🧔', hero_cheer: '🧔',
     hero_idle: '🧔', hero_walk: '🧔', hero_attack: '🧔', hero_hurt: '🧔',
     mob_axe: '🪓', mob_axe_attack: '🪓', mob_axe_down: '😵', mob_axe_g: '🪓', mob_axe_r: '🪓',
+    brute_idle: '🧔', brute_attack: '🧔', brute_down: '😵',
     giant_idle: '👹', giant_walk: '👹', giant_windup: '👹', giant_smash: '👹', giant_throw: '👹', giant_roar: '👹', giant_hurt: '👹', giant_down: '😵', ice_rock: '🧊',
     station_raw: '🪵', station_raw_full: '🥩', station_cooked: '🍽️', station_cooked_full: '🍖', toolbox: '🧰', signpost: '🪧', bush: '🌿', snowdrift: '⛄',
     watchtower: '🗼', barricade: '🪵', barricade_broken: '🪵', gate_open: '🚪',
