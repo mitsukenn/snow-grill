@@ -539,6 +539,7 @@ function init() {
   $('up-btn').onclick = () => openUpgrades(true);
   $('map-btn').onclick = () => openMap(true);
   $('map-close').onclick = () => openMap(false);
+  $('feedback-link').onclick = () => persist();   // 感想ページへ移る前にセーブ
   $('up-close').onclick = () => openUpgrades(false);
   $('upgrades').addEventListener('click', e => { if (e.target.id === 'upgrades') openUpgrades(false); });
   $('map').addEventListener('click', e => { if (e.target.id === 'map' || e.target.classList.contains('map-area')) openMap(false); });
