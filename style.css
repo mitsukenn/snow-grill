@@ -152,6 +152,8 @@ html, body {
   text-underline-offset: 3px;
 }
 .start-games:active { transform: translateY(2px); }
+/* リンクの前のアイコン（絵文字は使わない） */
+.lk-ic { width: 24px; height: 24px; margin: -5px 4px -5px -2px; vertical-align: middle; }
 .big-btn {
   font-size: 22px;
   font-weight: 900;
