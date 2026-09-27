@@ -37,7 +37,7 @@ const SCENES = {
     light: [['rgba(70,82,105,.30)', 'rgba(90,100,120,.12)']],
   },
   port: {
-    ground: { field: 'port_ice', camp: 'port_dock', campVeil: 'rgba(240,246,255,.28)', fieldSize: 600 },
+    ground: { field: 'port_frozen', camp: 'port_dock', campVeil: 'rgba(240,246,255,.28)', fieldSize: 600 },
     over: () => harbor(),
     decor: [
       ['pine', 20, 60, 100], ['@crate', 690, 120, 50], ['@crate', 40, 330, 50], ['@boat', 690, 400, 90],
@@ -267,11 +267,11 @@ function cliffs(light, dark, ice) {
   });
 }
 
-// 港：狩り場の奥に凍った海と流氷
+// 港：狩り場の奥の海も凍っている（暗い水面にすると、落ちそうに見えるので）
 function harbor() {
   const W = CONFIG.world.w, a = G.hunt;
   const g = ctx.createLinearGradient(0, 0, 0, a.y);
-  g.addColorStop(0, '#2c5d8c'); g.addColorStop(1, '#4f86b5');
+  g.addColorStop(0, '#a9d2ec'); g.addColorStop(1, '#c6e3f4');
   ctx.fillStyle = g; ctx.fillRect(-40, -40, W + 80, a.y + 50);
   ctx.fillStyle = 'rgba(240,248,255,.95)';
   for (let i = 0; i < 9; i++) {
