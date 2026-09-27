@@ -16,6 +16,12 @@ function fmt(n) {
   return String(Math.floor(n));
 }
 
+// プレイ回数の集計（AIゲーム実験室の全ゲーム共通）。失敗しても遊ぶのには関係ない
+const PLAY_API = 'https://script.google.com/macros/s/AKfycbyNh85RNVYJM1_cn5vn6d4_lFm-3_9MeQZe1vMGU4xk-fHRvGbbGUIgkgI2QUXhYyySMw/exec';
+function countPlay() {
+  try { fetch(PLAY_API, { method: 'POST', mode: 'no-cors', keepalive: true, headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ type: 'play', game: 'snow' }) }).catch(() => {}); } catch (e) {}
+}
+
 // ============================================================
 //  画像（読み込めたものは画像、まだ無いものは絵文字で描く）
 // ============================================================
@@ -538,6 +544,7 @@ function init() {
   $('map').addEventListener('click', e => { if (e.target.id === 'map' || e.target.classList.contains('map-area')) openMap(false); });
   $('start').onclick = () => {
     $('start').classList.add('hidden');
+    countPlay();   // タップしてスタート＝1回遊ぶ
     Sound.startBgm();
     Sound.sfx.click();
     // はじめてその村に来たときは、村の会話から
