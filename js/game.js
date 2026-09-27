@@ -171,23 +171,18 @@ function makeHelper(type) {
 }
 
 // 解放したときの効果（ロード時にも順番に当て直す）
-// i 番目の解放。リストの後は「何度でも買える強化」を順番に繰り返し、値段はだんだん上がる
+// i 番目の解放。全部解放したあとは null（パッドは出ない）
+//（以前あった「白クマ +1」の繰り返し強化は、敵を増やすのは気持ちよくないのでやめた）
+const unlockList = () => G.v && G.v.battle ? CONFIG.unlocks.filter(u => u.id !== 'barricade' && u.id !== 'tower') : CONFIG.unlocks;
 function unlockAt(i) {
-  const list = G.v && G.v.battle ? CONFIG.unlocks.filter(u => u.id !== 'barricade' && u.id !== 'tower') : CONFIG.unlocks;
-  const mul = G.v ? G.v.priceMul : 1;
-  if (i < list.length) return { ...list[i], price: Math.round(list[i].price * mul) };
-  const rep = CONFIG.repeatUnlocks;
-  const n = i - list.length;
-  const r = rep[n % rep.length];
-  const lv = Math.floor(n / rep.length);
-  return { ...r, label: `${r.label} Lv${lv + 1}`, price: Math.round(r.base * mul * Math.pow(CONFIG.repeatGrowth, lv)) };
+  const list = unlockList(), mul = G.v ? G.v.priceMul : 1;
+  return i < list.length ? { ...list[i], price: Math.round(list[i].price * mul) } : null;
 }
 
 function applyUnlock(id, fromSave) {
-  const u = CONFIG.unlocks.find(x => x.id === id) || CONFIG.repeatUnlocks.find(x => x.id === id);
+  const u = CONFIG.unlocks.find(x => x.id === id);
   let made = null;   // 新しく置いた設備・助っ人（ポンと出てくる演出用）
   switch (id) {
-    case 'moreBears': G.maxBears = Math.min(8, G.maxBears + 1); break;
     case 'grill2': made = makeGrill(CONFIG.grills[1]); G.grills.push(made); break;
     case 'hunter':   // 斧の助っ人を2人（id はセーブ互換のため hunter のまま）
       made = makeHelper('sword'); G.helpers.push(made);
@@ -311,7 +306,7 @@ function enterVillage(id) {
   Object.assign(G.player, { x: CONFIG.playerStart.x, y: CONFIG.playerStart.y, vx: 0, vy: 0, stack: [] });
   G.rescued = G.vs.rescued || 0;
   G.kills = G.vs.kills || 0;
-  G.unlockIdx = G.vs.unlockIdx || 0;
+  G.unlockIdx = Math.min(G.vs.unlockIdx || 0, unlockList().length);   // 昔のセーブの「白クマ +1」の分は数えない
   for (let i = 0; i < G.unlockIdx; i++) applyUnlock(unlockAt(i).id, true);
   G.vs.crew = G.vs.crew || [];
   G.timers = [];
@@ -383,7 +378,8 @@ function villageClear() {
 }
 
 function nextPad() {
-  G.pad = { ...unlockAt(G.unlockIdx), paid: 0, payT: 0, pulse: 0 };
+  const u = unlockAt(G.unlockIdx);
+  G.pad = u ? { ...u, paid: 0, payT: 0, pulse: 0 } : null;
   updateTerritory();
 }
 

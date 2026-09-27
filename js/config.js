@@ -140,12 +140,6 @@ const CONFIG = {
   // 武器レベルごとの見た目（斧のアイコン）
   weaponLooks: [[1, 'axe_wood', '木の斧'], [4, 'axe_iron', '鉄の斧'], [7, 'axe_gold', '伝説の大斧']],
 
-  // リストを全部解放したあとは、何度でも買える強化が順番に出てくる（値段はだんだん上がる）
-  repeatUnlocks: [
-    { id: 'moreBears', label: '狩り場の白クマを1頭ふやす', base: 700, x: 330, y: 690 },   // 同時に出る白クマの数 +1（最大8頭）
-  ],
-  repeatGrowth: 1.35,        // 買うたびに値段が何倍になるか
-
   // ---- 見た目（ChatGPT で作った素材。無ければ絵文字で表示） ----
   sprites: {
     hero_walk1: '🧔', hero_walk2: '🧔', hero_walk3: '🧔', hero_walk4: '🧔', hero_swing_up: '🧔', hero_swing: '🧔', hero_idle2: '🧔', hero_cheer: '🧔',
