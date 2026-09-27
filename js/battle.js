@@ -28,6 +28,7 @@ function banner(text, sub = '', sec = 2.6) {
 }
 
 function updateBattle(dt) {
+  checkDebut();
   const Bt = G.battle, B = CONFIG.battle;
   if (G.banner && (G.banner.t -= dt) <= 0) G.banner = null;
   if (Bt.won) return;
@@ -376,5 +377,120 @@ function drawRepairSpot() {
   ctx.textAlign = 'center';
   ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(90,40,0,.85)';
   ctx.strokeText('🔨 修理', s.x, s.y + 5); ctx.fillStyle = '#fff'; ctx.fillText('🔨 修理', s.x, s.y + 5);
+  ctx.restore();
+}
+
+// ============================================================
+//  豪傑ガルドの初登場：debut のついた決戦で、巨人が出ているあいだにピンチになったら（1回だけ）
+//  時間が止まってカットイン → ガルドが空から降ってきて、まわりの白クマを吹き飛ばす → 会話
+// ============================================================
+function checkDebut() {
+  const Bt = G.battle, g = Bt && Bt.giant, D = CONFIG.debut, P = G.player;
+  if (!g || Bt.won || Bt.debut || SAVE.seen.garuDebut || !(G.v.giant && G.v.giant.debut) || g.state === 'dead') return;
+  const pinch = P.downT > 0 || P.hp / P.maxHp < D.playerHp || (G.fenceMax && G.fenceHp / G.fenceMax < D.fence) || g.hp / g.maxHp < D.giantHp;
+  if (!pinch) return;
+  Bt.debut = true;
+  G.cutin = { t: 0, life: D.cutinSec };
+  G.banner = null;
+  G.joy = null; G.touch = null; G.moveTo = null;
+  Sound.sfx.roar();
+}
+
+function updateCutin(dt) {
+  const c = G.cutin;
+  c.t += dt;
+  if (c.t > 0.35 && !c.shout) { c.shout = true; Sound.sfx.unlock(); }
+  if (c.t >= c.life) { G.cutin = null; garuLands(); }
+}
+
+// 空から降ってきて、着地の衝撃でまわりの白クマを吹き飛ばす
+function garuLands() {
+  const D = CONFIG.debut, P = G.player, H = CONFIG.helper.brute;
+  const x = clamp(P.x + (P.x < 360 ? 70 : -70), 80, 640), y = P.downT > 0 ? fenceY() - 60 : P.y;
+  const h = makeBrute(0, x, y);
+  h.pop = 0;
+  h.face = G.battle.giant.x > x ? 1 : -1;
+  h.attackT = 0.5;
+  G.shake = 24;
+  fxAt('ui/explosion', x, y - 20, 320);
+  fxAt('ui/sparkle', x, y - 80, 220);
+  sparks(x, y - 20, 50, ['#ffd23f', '#fff', '#9fd7ff', '#ff9a3b']);
+  Sound.sfx.bearDown(); Sound.sfx.hit();
+  G.bears.forEach(b => {
+    if (b.state === 'dead') return;
+    const d = dist(b, { x, y });
+    if (b.giant) { hitBear(b, Math.round(b.maxHp * 0.06), h); return; }   // 巨人はのけぞるだけ
+    if (d > D.landR) return;
+    const ang = Math.atan2(b.y - y, b.x - x);
+    b.x += Math.cos(ang) * 150; b.y += Math.sin(ang) * 90;
+    b.state = 'wander'; b.wt = 0;
+    hitBear(b, H.damage * 2, h);
+  });
+  // 主人公とバリケードも少し立て直す
+  if (P.downT <= 0) P.hp = Math.max(P.hp, P.maxHp * D.heal);
+  if (G.fenceMax) G.fenceHp = Math.max(G.fenceHp, G.fenceMax * D.fenceFix);
+  floatText(x, y - 150, '豪傑ガルド 参上！', '#ffd23f', 34);
+  say(h, 'ガッハッハ！', 2);
+  SAVE.seen.garuDebut = true;
+  persist();
+  later(0.9, () => showStory(GARU_DEBUT));
+}
+
+// カットイン：暗くした画面に斜めの帯、ガルドが右から飛びこみ、名前がドンと出る
+function drawCutin(W, H) {
+  const c = G.cutin;
+  if (!c) return;
+  const t = c.t, out = Math.max(0, (t - (c.life - 0.3)) / 0.3);   // 最後の 0.3 秒で消える
+  const inK = Math.min(1, t / 0.28);
+  ctx.save();
+  ctx.globalAlpha = 1 - out;
+  ctx.fillStyle = 'rgba(8,12,30,.62)';
+  ctx.fillRect(0, 0, W, H);
+  // 斜めの帯
+  const cy = H * 0.46, bh = Math.min(260, H * 0.34);
+  ctx.save();
+  ctx.translate(W / 2, cy);
+  ctx.rotate(-0.12);
+  ctx.scale(1, inK);
+  const g = ctx.createLinearGradient(0, -bh / 2, 0, bh / 2);
+  g.addColorStop(0, '#b3261e'); g.addColorStop(0.5, '#e8552d'); g.addColorStop(1, '#8e1a14');
+  ctx.fillStyle = g;
+  ctx.fillRect(-W, -bh / 2, W * 2, bh);
+  ctx.fillStyle = '#ffd23f';
+  ctx.fillRect(-W, -bh / 2, W * 2, 5); ctx.fillRect(-W, bh / 2 - 5, W * 2, 5);
+  // 流れる集中線
+  ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineCap = 'round';
+  for (let i = 0; i < 16; i++) {
+    const yy = -bh / 2 + ((i * 37) % bh), xx = ((i * 97 + t * 1400) % (W * 2)) - W;
+    ctx.lineWidth = 2 + (i % 3);
+    ctx.beginPath(); ctx.moveTo(xx, yy); ctx.lineTo(xx - 90, yy); ctx.stroke();
+  }
+  ctx.restore();
+  // ガルド（右から飛びこんで、少し揺れる）
+  const im = images.brute_attack || images.brute_idle;
+  const slide = t < 0.45 ? 1 - Math.pow(1 - t / 0.45, 3) : 1;
+  const ih = Math.min(H * 0.48, 380), iw = im ? ih * im.width / im.height : 0;
+  const ix = W + iw * 0.2 - (W * 0.52 + iw * 0.2) * slide + Math.sin(t * 30) * (t < 0.6 ? 3 : 0);
+  if (im) ctx.drawImage(im, ix - iw / 2, cy - ih * 0.62, iw, ih);
+  // 名前（遅れてドンと出る）
+  if (t > 0.5) {
+    const k = Math.min(1, (t - 0.5) / 0.18), sc = 1.8 - 0.8 * k;
+    ctx.save();
+    ctx.translate(W * 0.34, cy + bh * 0.12);
+    ctx.rotate(-0.12);
+    ctx.scale(sc, sc);
+    ctx.globalAlpha = (1 - out) * k;
+    ctx.textAlign = 'center';
+    ctx.font = '900 20px "Hiragino Sans",sans-serif';
+    ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(60,0,0,.9)';
+    ctx.strokeText('大斧の助っ人', 0, -34); ctx.fillStyle = '#fff'; ctx.fillText('大斧の助っ人', 0, -34);
+    ctx.font = '900 40px "Hiragino Sans",sans-serif';
+    ctx.lineWidth = 8;
+    ctx.strokeText('豪傑ガルド', 0, 10); ctx.fillStyle = '#ffdf5b'; ctx.fillText('豪傑ガルド', 0, 10);
+    ctx.font = '900 30px "Hiragino Sans",sans-serif';
+    ctx.lineWidth = 7;
+    ctx.strokeText('参上！！', 0, 50); ctx.fillStyle = '#fff'; ctx.fillText('参上！！', 0, 50);
+    ctx.restore();
+  }
   ctx.restore();
 }

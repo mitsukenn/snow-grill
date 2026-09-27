@@ -1240,14 +1240,12 @@ const ROLES = [
 // ---- 豪傑（レベル2から）----
 // レベルと救った人数から、いまいるはずの豪傑の人数に合わせる。first＝村に入ったとき（演出なし）
 function syncBrutes(first) {
+  if (!SAVE.seen.garuDebut) return;   // 初登場（決戦のピンチ）までは来ない
   const at = CONFIG.brutes[levelOf(G.v)] || [];
   const want = at.filter(t => G.v.battle || G.rescued >= t * G.v.goal).length;
   while (G.helpers.filter(h => h.brute).length < want) {
     const n = G.helpers.filter(h => h.brute).length;
-    const H = CONFIG.helper.brute;
-    const h = makeHelper('sword');
-    Object.assign(h, { brute: true, n: 10 + n, hp: H.hp, maxHp: H.hp, x: 300 + n * 90, y: 900 });
-    G.helpers.push(h);
+    const h = makeBrute(n, 300 + n * 90, 900);
     if (!first) {
       h.pop = 0;
       say(h, n ? 'わしの相棒も来たぞ！ ガッハッハ！' : 'ガッハッハ！ 豪傑ガルド、参上！', 3);
@@ -1256,6 +1254,13 @@ function syncBrutes(first) {
       Sound.sfx.unlock();
     }
   }
+}
+function makeBrute(n, x, y) {
+  const H = CONFIG.helper.brute;
+  const h = makeHelper('sword');
+  Object.assign(h, { brute: true, n: 10 + n, hp: H.hp, maxHp: H.hp, x, y });
+  G.helpers.push(h);
+  return h;
 }
 // 大斧の一撃：ねらった白クマのまわりをまとめて斬り、吹き飛ばす
 function bruteSmash(h, target) {
@@ -1636,6 +1641,7 @@ function currentGoal() {
 // ============================================================
 function update(dt) {
   if (G.paused) return;
+  if (G.cutin) { updateCutin(dt); return; }   // 豪傑の登場カットイン（js/battle.js）の間は時間が止まる
   G.time += dt;
   updateTimers(dt);
   animateTerritory(dt);
@@ -1833,6 +1839,7 @@ function render() {
     ctx.fillRect(0, 0, W, H);
   }
   drawBanner(W, H);
+  drawCutin(W, H);
   drawJoystick();
   drawCoinFly(W);
 }
